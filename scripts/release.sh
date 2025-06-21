@@ -52,6 +52,14 @@ if [[ "$PUBLISH" == true && "$DRY_RUN" == false ]]; then
 fi
 
 # -------- version resolution ------------------------------------------------
+# Require a clean working tree
+if git rev-parse --is-inside-work-tree &>/dev/null; then
+  if ! git diff --quiet || ! git diff --cached --quiet; then
+    echo "Working tree has uncommitted changes. Commit or stash them before releasing." >&2
+    exit 1
+  fi
+fi
+
 # Fetch remote tags early so existence check includes them
 if git rev-parse --is-inside-work-tree &>/dev/null; then
   git fetch --tags --quiet || true
