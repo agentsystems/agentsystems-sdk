@@ -6,10 +6,14 @@ readme = "README.md"
 authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
 license = "Apache-2.0"
 requires-python = ">=3.9"
+dependencies = ["typer[all]>=0.9"]
 
+
+[project.scripts]
+agentsystems = "agentsystems_sdk.cli:app"
 
 [tool.setuptools]
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "NOTICE"]
 
 [build-system]
 requires = ["setuptools>=67", "wheel"]

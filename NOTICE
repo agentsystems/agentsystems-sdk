@@ -1,0 +1,10 @@
+AgentSystems SDK – Third-Party Notices
+======================================
+
+This project relies on the third-party components listed below. License texts for these components are generally available within the respective upstream packages. This notice lists them here for attribution and compliance.
+
+Included components
+-------------------
+
+Typer – MIT License
+Copyright (c) 2019 Sebastián Ramírez
