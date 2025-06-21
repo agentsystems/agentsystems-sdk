@@ -53,7 +53,7 @@ def init(
 
     Steps:
     1. Prompt for a project name (defaults to directory name).
-    2. Clone the `agent-deployment-platform` template repo into *project_dir*.
+    2. Clone the `agent-platform-deployments` template repo into *project_dir*.
     3. Pull Docker images required by the platform.
     """
     # Determine target directory
@@ -61,7 +61,7 @@ def init(
         if not sys.stdin.isatty():
             typer.secho("TARGET_DIR argument required when running non-interactively.", fg=typer.colors.RED)
             raise typer.Exit(code=1)
-        default_dir = pathlib.Path.cwd() / "agent-deployment-platform"
+        default_dir = pathlib.Path.cwd() / "agent-platform-deployments"
         dir_input = typer.prompt("Directory to create", default=str(default_dir))
         project_dir = pathlib.Path(dir_input)
 
@@ -75,8 +75,8 @@ def init(
         token_input = typer.prompt("Registry access token (leave blank for none)", default="", hide_input=True)
         token = token_input or None
 
-    repo_https = "https://github.com/agentsystems/agent-deployment-platform.git"
-    repo_ssh = "git@github.com:agentsystems/agent-deployment-platform.git"
+    repo_https = "https://github.com/agentsystems/agent-platform-deployments.git"
+    repo_ssh = "git@github.com:agentsystems/agent-platform-deployments.git"
     repo = repo_ssh if ssh else repo_https
     if token and not ssh:
         # inject token into URL (supports GitHub PAT beginning with ghp_)
