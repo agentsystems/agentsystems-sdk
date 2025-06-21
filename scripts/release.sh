@@ -130,6 +130,8 @@ fi
 if [[ "$DRY_RUN" == true ]]; then
   echo "[dry-run] Skipping build step. Would run: python -m build --sdist --wheel";
 else
+    # remove any previous build artifacts so we only upload the new version
+  rm -rf dist
   # choose python interpreter (prefer 'python3', fallback to 'python')
   if command -v python3 &>/dev/null; then PY=python3; elif command -v python &>/dev/null; then PY=python; else echo "No python interpreter found"; exit 1; fi
   "$PY" -m build --sdist --wheel
