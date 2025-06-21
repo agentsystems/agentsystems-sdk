@@ -8,6 +8,9 @@ license = "Apache-2.0"
 requires-python = ">=3.9"
 
 
+[tool.setuptools]
+license-files = ["LICENSE"]
+
 [build-system]
 requires = ["setuptools>=67", "wheel"]
 build-backend = "setuptools.build_meta"
