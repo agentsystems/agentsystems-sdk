@@ -73,12 +73,29 @@ echo "Publish to PyPI: $PUBLISH"
 echo "Dry-run       : $DRY_RUN"
 echo "# ---------------------------"
 
-# -------- bump version in pyproject.toml ------------------------------------
-if [[ "$DRY_RUN" == false ]]; then
-  sed -i.bak -E "0,/^version = \".*\"/s//version = \"$VERSION\"/" pyproject.toml
-  rm pyproject.toml.bak
-  git add pyproject.toml
-  git commit -m "release: $VERSION"
+# -------- verify version matches pyproject.toml -----------------------------
+PY_FOR_VERSION=$(command -v python3 || command -v python)
+if [[ -z "$PY_FOR_VERSION" ]]; then echo "Python interpreter not found"; exit 1; fi
+FILE_VER=$("$PY_FOR_VERSION" - "$VERSION" <<'PY'
+import sys, pathlib
+try:
+    import tomllib as _toml
+except ModuleNotFoundError:
+    try:
+        import tomli as _toml  # type: ignore
+    except ModuleNotFoundError:
+        print("tomli is required for Python < 3.11", file=sys.stderr)
+        sys.exit(1)
+wanted = sys.argv[1]
+text = pathlib.Path("pyproject.toml").read_text()
+info = _toml.loads(text)
+print(info["project"]["version"])
+PY
+)
+if [[ "$FILE_VER" != "$VERSION" ]]; then
+  echo "pyproject.toml declares version $FILE_VER but --version was $VERSION" >&2
+  echo "Update pyproject.toml before releasing." >&2
+  exit 1
 fi
 
 # -------- build -------------------------------------------------------------
