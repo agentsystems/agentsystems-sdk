@@ -12,7 +12,6 @@ dependencies = ["typer[all]>=0.9"]
 [project.scripts]
 agentsystems = "agentsystems_sdk.cli:app"
 
-[tool.setuptools]
 license-files = ["LICENSE", "NOTICE"]
 
 [build-system]
