@@ -1,11 +1,11 @@
 [project]
 name = "agentsystems-sdk"
-version = "0.2.0"
+version = "0.2.1"
 description = "AgentSystems Python SDK and CLI"
 readme = "README.md"
 authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
 license = "Apache-2.0"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = ["typer[all]>=0.9"]
 
 license-files = ["LICENSE", "NOTICE"]
