@@ -82,9 +82,14 @@ if [[ "$DRY_RUN" == false ]]; then
 fi
 
 # -------- build -------------------------------------------------------------
-python -m build --sdist --wheel
-
-echo "Built distributions in dist/"
+if [[ "$DRY_RUN" == true ]]; then
+  echo "[dry-run] Skipping build step. Would run: python -m build --sdist --wheel";
+else
+  # choose python interpreter (prefer 'python3', fallback to 'python')
+  if command -v python3 &>/dev/null; then PY=python3; elif command -v python &>/dev/null; then PY=python; else echo "No python interpreter found"; exit 1; fi
+  "$PY" -m build --sdist --wheel
+  echo "Built distributions in dist/"
+fi
 
 # -------- twine publish -----------------------------------------------------
 if [[ "$PUBLISH" == true ]]; then
