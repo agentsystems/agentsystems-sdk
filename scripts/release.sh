@@ -4,16 +4,16 @@
 # Mimics agent-template's build_and_release.sh semantics for Python / PyPI.
 # ---------------------------------------------------------------------------
 # Usage examples:
-#   ./scripts/release.sh --version 0.2.0          # bump/commit/tag/build wheel
-#   ./scripts/release.sh --publish                # derive version from git tag & upload
-#   VERSION=0.3.1 ./scripts/release.sh --publish  # env override + publish
-#   ./scripts/release.sh --help                   # show help
+#   ./scripts/release.sh --version 0.3.0                         # build & lint only (dry run)
+#   ./scripts/release.sh --version 0.3.0 --test                  # publish to Test PyPI
+#   ./scripts/release.sh --version 0.3.0 --prod                  # publish to real PyPI
+#   ./scripts/release.sh --version 0.3.0 --test --dry-run        # full checks, no upload
 #
 # Flags:
 #   --version <semver>  : Desired package version (defaults to env VERSION or git describe)
-#   --publish           : After building wheel, upload to PyPI via twine (twine must be configured)
-#   --git-tag           : Create and push git tag (vX.Y.Z) after successful build
-#   --dry-run           : Validate & build only – do not commit, tag, or publish
+#   --test              : Publish to Test PyPI (repository "testpypi")
+#   --prod              : Publish to real PyPI  (repository "pypi")
+#   --dry-run           : Run all checks/build but skip upload & git push
 #   -h | --help         : Display this help
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -24,22 +24,38 @@ function usage() {
 }
 
 VERSION="${VERSION:-}"
-PUBLISH=false
-CREATE_GIT_TAG=false
+REPO="dry-run"   # options: dry-run, testpypi, pypi
 DRY_RUN=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --version) VERSION="$2"; shift 2;;
-    --publish) PUBLISH=true; shift;;
-    --git-tag) CREATE_GIT_TAG=true; shift;;
-    --dry-run) DRY_RUN=true; shift;;
+    --test)    REPO="testpypi"; shift;;
+    --prod)    REPO="pypi"; shift;;
+        --dry-run) DRY_RUN=true; shift;;
     -h|--help) usage;;
     *) echo "Unknown arg: $1"; usage;;
   esac
 done
 
+# ----------------------------------------------------------------------------
+# determine publish mode & tag creation
+# ----------------------------------------------------------------------------
+PUBLISH=false
+if [[ "$REPO" != "dry-run" ]]; then
+  PUBLISH=true
+fi
+
+CREATE_GIT_TAG=false
+if [[ "$PUBLISH" == true && "$DRY_RUN" == false ]]; then
+  CREATE_GIT_TAG=true
+fi
+
 # -------- version resolution ------------------------------------------------
+# Fetch remote tags early so existence check includes them
+if git rev-parse --is-inside-work-tree &>/dev/null; then
+  git fetch --tags --quiet || true
+fi
 semver_regex='^([0-9]+)\.([0-9]+)\.([0-9]+)([A-Za-z0-9.-]*)?$'
 
 if [[ -z "$VERSION" ]]; then
@@ -66,11 +82,23 @@ if git rev-parse "$GIT_TAG" &>/dev/null; then
   echo "Git tag $GIT_TAG already exists – aborting."; exit 1;
 fi
 
+# -------- PyPI/TestPyPI version existence check -----------------------------
+if [[ "$PUBLISH" == true ]]; then
+  API_BASE="https://pypi.org/pypi"
+  if [[ "$REPO" == "testpypi" ]]; then
+    API_BASE="https://test.pypi.org/pypi"
+  fi
+  if command -v curl &>/dev/null && curl -sf -o /dev/null "$API_BASE/agentsystems-sdk/$VERSION/json"; then
+    echo "Package version $VERSION already exists on $API_BASE – aborting." >&2
+    exit 1
+  fi
+fi
+
 echo "# ---------------------------"
-echo "Version       : $VERSION"
-echo "Git tag       : $GIT_TAG (create: $CREATE_GIT_TAG)"
-echo "Publish to PyPI: $PUBLISH"
-echo "Dry-run       : $DRY_RUN"
+echo "Version        : $VERSION"
+echo "Repository     : $REPO"
+echo "Git tag        : $GIT_TAG (create: $CREATE_GIT_TAG)"
+echo "Dry-run        : $DRY_RUN"
 echo "# ---------------------------"
 
 # -------- verify version matches pyproject.toml -----------------------------
@@ -111,9 +139,9 @@ fi
 # -------- twine publish -----------------------------------------------------
 if [[ "$PUBLISH" == true ]]; then
   if [[ "$DRY_RUN" == true ]]; then
-    echo "Would run: twine upload dist/*";
+    echo "Would run: TWINE_REPOSITORY=$REPO twine upload -r $REPO dist/*";
   else
-    twine upload dist/*
+    TWINE_REPOSITORY="$REPO" twine upload -r "$REPO" dist/*
   fi
 fi
 
