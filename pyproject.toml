@@ -1,0 +1,13 @@
+[project]
+name = "agentsystems-sdk"
+version = "0.1.0"
+description = "AgentSystems Python SDK and CLI"
+readme = "README.md"
+authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
+license = "Apache-2.0"
+requires-python = ">=3.9"
+
+
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
