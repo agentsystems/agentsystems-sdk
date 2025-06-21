@@ -79,7 +79,19 @@ fi
 
 GIT_TAG="v$VERSION"
 if git rev-parse "$GIT_TAG" &>/dev/null; then
-  echo "Git tag $GIT_TAG already exists – aborting."; exit 1;
+  echo "Git tag $GIT_TAG already exists – reusing it.";
+  # Ensure we are building the exact commit tagged
+  TAG_COMMIT="$(git rev-parse "$GIT_TAG")"
+  HEAD_COMMIT="$(git rev-parse HEAD)"
+  if [[ "$TAG_COMMIT" != "$HEAD_COMMIT" ]]; then
+    echo "Current HEAD ($HEAD_COMMIT) does not match tag $GIT_TAG commit ($TAG_COMMIT). Checkout the tag or create a new version." >&2
+    exit 1
+  fi
+  CREATE_GIT_TAG=false
+else
+  if [[ "$CREATE_GIT_TAG" == true ]]; then
+    echo "Will create git tag $GIT_TAG"
+  fi
 fi
 
 # -------- PyPI/TestPyPI version existence check -----------------------------
