@@ -129,14 +129,7 @@ def init(
                     raise
             progress.advance(pull_task)
 
-    except typer.Exit:
-        # If unauthenticated attempt failed and we didn't use a token, prompt (interactive) or abort.
-        if gh_token is None and sys.stdin.isatty():
-            gh_token = typer.prompt("Clone failed – provide GitHub token", hide_input=True)
-            clone_repo_url = base_repo_url.replace("https://", f"https://{gh_token}@")
-            _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
-        else:
-            raise
+
 
     # ---------- Completion message ----------
     console.print(Panel.fit(f"✅ [bold green]Initialization complete![/bold green]\n[white]Navigate to[/white] [bold]{project_dir}[/bold]", border_style="green"))
