@@ -145,7 +145,15 @@ def _docker_login_if_needed(token: str | None) -> None:
     registry = "docker.io"
     org = "agentsystems"
     typer.echo("Logging into Docker Hub…")
-    _run(["docker", "login", registry, "-u", org, "-p", token])
+    try:
+        subprocess.run(
+            ["docker", "login", registry, "-u", org, "--password-stdin"],
+            input=f"{token}\n".encode(),
+            check=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        typer.secho("Docker login failed", fg=typer.colors.RED)
+        raise typer.Exit(exc.returncode) from exc
 
 
 def _required_images() -> List[str]:
