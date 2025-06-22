@@ -6,5 +6,8 @@ This project relies on the third-party components listed below. License texts fo
 Included components
 -------------------
 
+python-dotenv - BSD-3-Clause License
+Copyright (c) 2014, Saurabh Kumar (python-dotenv), 2013, Ted Tieken (django-dotenv-rw), 2013, Jacob Kaplan-Moss (django-dotenv)
+
 Typer – MIT License
 Copyright (c) 2019 Sebastián Ramírez

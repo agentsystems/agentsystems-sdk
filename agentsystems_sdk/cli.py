@@ -8,10 +8,14 @@ import importlib.metadata as _metadata
 
 import os
 import pathlib
+from dotenv import load_dotenv
 import shutil
 import subprocess
 import sys
 from typing import List, Optional
+
+# Load .env before Typer parses env-var options
+load_dotenv()
 
 import typer
 
