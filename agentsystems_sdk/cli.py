@@ -90,13 +90,10 @@ def init(
     console.print(Panel.fit("🚀 [bold cyan]AgentSystems SDK[/bold cyan] – initialization", border_style="bright_cyan"))
 
     # ---------- Progress ----------
-    tasks_style = {
-        "bar_style": "bright_magenta",
-    }
     with Progress(
         SpinnerColumn(style="cyan"),
         TextColumn("[bold]{task.description}"),
-        BarColumn(**tasks_style),
+        BarColumn(style="bright_magenta"),
         TimeElapsedColumn(),
         console=console,
         transient=True,
