@@ -46,15 +46,14 @@ def main(
 def init(
     project_dir: Optional[pathlib.Path] = typer.Argument(None, exists=False, file_okay=False, dir_okay=True, writable=True, resolve_path=True),
     branch: str = typer.Option("main", help="Branch to clone"),
-    ssh: bool = typer.Option(False, help="Clone via SSH instead of HTTPS"),
-    token: str | None = typer.Option(None, "--token", help="Auth token for private repo / container registry"),
+    gh_token: str | None = typer.Option(None, "--gh-token", envvar="GITHUB_TOKEN", help="GitHub Personal Access Token for private template repo"),
+    docker_token: str | None = typer.Option(None, "--docker-token", envvar="DOCKER_OAT", help="Docker Hub Org Access Token for private images"),
 ):
     """Clone the agent deployment template and pull required Docker images.
 
     Steps:
-    1. Prompt for a project name (defaults to directory name).
-    2. Clone the `agent-platform-deployments` template repo into *project_dir*.
-    3. Pull Docker images required by the platform.
+    1. Clone the `agent-platform-deployments` template repo into *project_dir*.
+    2. Pull Docker images required by the platform.
     """
     # Determine target directory
     if project_dir is None:
@@ -70,27 +69,40 @@ def init(
         typer.secho(f"Directory {project_dir} is not empty – aborting.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    # Prompt for token if not provided
-    if token is None and sys.stdin.isatty():
-        token_input = typer.prompt("Registry access token (leave blank for none)", default="", hide_input=True)
-        token = token_input or None
+    # Prompt for missing tokens only if running interactively
+    if gh_token is None and sys.stdin.isatty():
+        gh_token = typer.prompt("GitHub token (leave blank if repo is public)", default="", hide_input=True) or None
+    if docker_token is None and sys.stdin.isatty():
+        docker_token = typer.prompt("Docker org access token (leave blank if images are public)", default="", hide_input=True) or None
 
-    repo_https = "https://github.com/agentsystems/agent-platform-deployments.git"
-    repo_ssh = "git@github.com:agentsystems/agent-platform-deployments.git"
-    repo = repo_ssh if ssh else repo_https
-    if token and not ssh:
-        # inject token into URL (supports GitHub PAT beginning with ghp_)
-        repo = repo_https.replace("https://", f"https://{token}@")
-
-    typer.echo(f"Cloning {repo} → {project_dir} (branch {branch})…")
-    _run(["git", "clone", "--branch", branch, repo, str(project_dir)])
+    base_repo_url = "https://github.com/agentsystems/agent-platform-deployments.git"
+    clone_repo_url = (base_repo_url.replace("https://", f"https://{gh_token}@") if gh_token else base_repo_url)
+    typer.echo(f"Cloning {clone_repo_url} → {project_dir} (branch {branch})…")
+    try:
+        _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
+    except typer.Exit:
+        # If unauthenticated attempt failed and we didn't use a token, prompt (interactive) or abort.
+        if gh_token is None and sys.stdin.isatty():
+            gh_token = typer.prompt("Clone failed – provide GitHub token", hide_input=True)
+            clone_repo_url = base_repo_url.replace("https://", f"https://{gh_token}@")
+            _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
+        else:
+            raise
 
     typer.echo("Clone complete. Pulling Docker images (this may take a while)…")
     _ensure_docker_installed()
-    _docker_login_if_needed(token)
+    _docker_login_if_needed(docker_token)
     for img in _required_images():
         typer.echo(f"  → pulling {img}")
-        _run(["docker", "pull", img])
+        try:
+            _run(["docker", "pull", img])
+        except typer.Exit:
+            if docker_token is None and sys.stdin.isatty():
+                docker_token = typer.prompt("Pull failed – provide Docker org token", hide_input=True)
+                _docker_login_if_needed(docker_token)
+                _run(["docker", "pull", img])
+            else:
+                raise
 
     typer.secho("\nInitialization complete!", fg=typer.colors.GREEN)
     typer.echo(f"Navigate to {project_dir} and follow the README to start the platform.")
@@ -125,8 +137,9 @@ def _docker_login_if_needed(token: str | None) -> None:
     if not token:
         return
     registry = "docker.io"
-    typer.echo("Logging into container registry…")
-    _run(["docker", "login", registry, "-u", "oauth2", "-p", token])
+    org = "agentsystems"
+    typer.echo("Logging into Docker Hub…")
+    _run(["docker", "login", registry, "-u", org, "-p", token])
 
 
 def _required_images() -> List[str]:
