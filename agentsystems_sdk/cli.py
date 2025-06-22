@@ -133,7 +133,7 @@ def _required_images() -> List[str]:
     # Central place to keep image list – update when the platform adds new components.
     return [
         "agentsystems/agent-control-plane:latest",
-        "agentsystems/agent-backend:latest",
+        "agentsystems/hello-world-agent:latest",
     ]
 
 
