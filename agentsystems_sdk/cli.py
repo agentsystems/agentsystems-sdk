@@ -9,6 +9,9 @@ import importlib.metadata as _metadata
 import os
 import pathlib
 from dotenv import load_dotenv
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 import re
 import shutil
 import subprocess
@@ -20,6 +23,7 @@ load_dotenv()
 
 import typer
 
+console = Console()
 app = typer.Typer(help="AgentSystems command-line interface")
 
 
@@ -82,10 +86,49 @@ def init(
 
     base_repo_url = "https://github.com/agentsystems/agent-platform-deployments.git"
     clone_repo_url = (base_repo_url.replace("https://", f"https://{gh_token}@") if gh_token else base_repo_url)
-    display_url = re.sub(r"https://[^@]+@", "https://", clone_repo_url)
-    typer.echo(f"Cloning {display_url} → {project_dir} (branch {branch})…")
-    try:
-        _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
+    # ---------- UI banner ----------
+    console.print(Panel.fit("🚀 [bold cyan]AgentSystems SDK[/bold cyan] – initialization", border_style="bright_cyan"))
+
+    # ---------- Progress ----------
+    tasks_style = {
+        "bar_style": "bright_magenta",
+    }
+    with Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[bold]{task.description}"),
+        BarColumn(**tasks_style),
+        TimeElapsedColumn(),
+        console=console,
+        transient=True,
+    ) as progress:
+        clone_task = progress.add_task("Cloning template repo", total=None)
+        display_url = re.sub(r"https://[^@]+@", "https://", clone_repo_url)
+        try:
+            _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
+        finally:
+            progress.update(clone_task, completed=1)
+
+        progress.add_task("Checking Docker", total=None)
+        _ensure_docker_installed()
+
+        if docker_token:
+            progress.add_task("Logging into Docker Hub", total=None)
+            _docker_login_if_needed(docker_token)
+
+        pull_task = progress.add_task("Pulling Docker images", total=len(_required_images()))
+        for img in _required_images():
+            progress.update(pull_task, description=f"Pulling {img}")
+            try:
+                _run(["docker", "pull", img])
+            except typer.Exit:
+                if docker_token is None and sys.stdin.isatty():
+                    docker_token = typer.prompt("Pull failed – provide Docker org token", hide_input=True)
+                    _docker_login_if_needed(docker_token)
+                    _run(["docker", "pull", img])
+                else:
+                    raise
+            progress.advance(pull_task)
+
     except typer.Exit:
         # If unauthenticated attempt failed and we didn't use a token, prompt (interactive) or abort.
         if gh_token is None and sys.stdin.isatty():
@@ -95,23 +138,8 @@ def init(
         else:
             raise
 
-    typer.echo("Clone complete. Pulling Docker images (this may take a while)…")
-    _ensure_docker_installed()
-    _docker_login_if_needed(docker_token)
-    for img in _required_images():
-        typer.echo(f"  → pulling {img}")
-        try:
-            _run(["docker", "pull", img])
-        except typer.Exit:
-            if docker_token is None and sys.stdin.isatty():
-                docker_token = typer.prompt("Pull failed – provide Docker org token", hide_input=True)
-                _docker_login_if_needed(docker_token)
-                _run(["docker", "pull", img])
-            else:
-                raise
-
-    typer.secho("\nInitialization complete!", fg=typer.colors.GREEN)
-    typer.echo(f"Navigate to {project_dir} and follow the README to start the platform.")
+    # ---------- Completion message ----------
+    console.print(Panel.fit(f"✅ [bold green]Initialization complete![/bold green]\n[white]Navigate to[/white] [bold]{project_dir}[/bold]", border_style="green"))
 
 
 @app.command()
