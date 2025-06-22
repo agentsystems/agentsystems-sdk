@@ -9,6 +9,7 @@ import importlib.metadata as _metadata
 import os
 import pathlib
 from dotenv import load_dotenv
+import re
 import shutil
 import subprocess
 import sys
@@ -81,7 +82,8 @@ def init(
 
     base_repo_url = "https://github.com/agentsystems/agent-platform-deployments.git"
     clone_repo_url = (base_repo_url.replace("https://", f"https://{gh_token}@") if gh_token else base_repo_url)
-    typer.echo(f"Cloning {clone_repo_url} → {project_dir} (branch {branch})…")
+    display_url = re.sub(r"https://[^@]+@", "https://", clone_repo_url)
+    typer.echo(f"Cloning {display_url} → {project_dir} (branch {branch})…")
     try:
         _run(["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)])
     except typer.Exit:
