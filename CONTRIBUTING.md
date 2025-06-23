@@ -53,10 +53,16 @@ agentsystems up
 # watch logs in foreground
 agentsystems up --foreground
 
-# fresh restart (down -v, then up -d)
-agentsystems up --fresh
+# restart stack (down + up, detached)
+agentsystems restart
 
-# stop everything and remove volumes
+# restart stack and remove volumes (confirmation required)
+agentsystems restart --volumes
+
+# stop everything (keep volumes)
+agentsystems down
+
+# stop and remove volumes (confirmation required)
 agentsystems down --volumes
 ```
 
