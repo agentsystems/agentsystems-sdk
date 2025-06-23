@@ -413,32 +413,36 @@ def version() -> None:
 
 
 def _wait_for_gateway_ready(compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120) -> None:
-    """Stream logs until *service* prints 'Application startup complete.' or timeout."""
-    console.print("[cyan]⌛ Waiting for gateway to become ready…[/cyan]")
+    """Show spinner while tailing logs until the gateway reports readiness."""
     cmd = ["docker", "compose", "-f", str(compose_file), "logs", "--no-color", "-f", service]
-    start = time.time()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     ready_patterns = [
         re.compile(r"Application startup complete", re.I),
         re.compile(r"Uvicorn running", re.I),
     ]
-    try:
-        for line in proc.stdout:  # type: ignore[attr-defined]
-            if any(p.search(line) for p in ready_patterns):
-                console.print("[green]Gateway ready![/green]")
-                proc.terminate()
-                break
-            if time.time() - start > timeout:
-                console.print("[yellow]Gateway readiness timeout reached – continuing anyway.[/yellow]")
-                proc.terminate()
-                break
-    except Exception:
-        proc.terminate()
-    finally:
+
+    start = time.time()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold cyan]Waiting for gateway…[/bold cyan]"), console=console, transient=True) as prog:
+        task = prog.add_task("wait", total=None)
         try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            for line in proc.stdout:  # type: ignore[attr-defined]
+                if any(p.search(line) for p in ready_patterns):
+                    proc.terminate()
+                    break
+                if time.time() - start > timeout:
+                    console.print("[yellow]Gateway readiness timeout reached – continuing anyway.[/yellow]")
+                    proc.terminate()
+                    break
+        except Exception:
+            proc.terminate()
+        finally:
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+
+    console.print("[green]Gateway ready![/green]")
 
 
 def _confirm_danger(action: str) -> None:
