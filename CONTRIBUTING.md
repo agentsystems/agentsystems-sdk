@@ -32,14 +32,32 @@ Tokens can be supplied via `--gh-token / --docker-token` flags or loaded automat
 ---
 ## 2. Running and testing the CLI
 
-```bash
-# interactive demo
-agentsystems init ~/tmp/agent-platform-deployments
+### Initialise deployment template
 
-# scripted non-interactive
+```bash
+agentsystems init ~/tmp/agent-platform-deployments           # interactive
+
+# headless / CI
 GITHUB_TOKEN=ghp_xxx DOCKER_OAT=st_xxx \
   agentsystems init /opt/agentsystems/engine --gh-token "$GITHUB_TOKEN" --docker-token "$DOCKER_OAT"
 ```
+
+### Bring the platform up
+
+```bash
+cd ~/tmp/agent-platform-deployments   # or pass the path explicitly
+
+# default: detached, returns immediately
+agentsystems up
+
+# watch logs in foreground
+agentsystems up --foreground
+
+# fresh restart (down -v, then up -d)
+agentsystems up --fresh
+```
+
+`DOCKER_OAT` must have the **"Read public repositories"** permission so pulls for `postgres`, `redis`, etc. succeed.
 
 The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--password-stdin`.
 

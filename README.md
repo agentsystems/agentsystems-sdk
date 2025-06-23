@@ -34,9 +34,34 @@ pipx install --editable .        # live-reloads on file changes
 | Command | Description |
 |---------|-------------|
 | `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. |
-| `agentsystems up` *(coming soon)* | Bring up the AgentSystems stack via Docker Compose. |
+| `agentsystems up [PROJECT_DIR]` | Start the full AgentSystems platform with Docker Compose (detached by default). |
 | `agentsystems version` | Show the installed SDK version. |
 
+### `up` options
+
+```
+--detach / --foreground   Run containers in background (default) or stream logs
+--fresh                   docker compose down -v before starting
+--env-file PATH           Pass a custom .env file to Compose
+--docker-token TEXT       Docker Hub Org Access Token (env `DOCKER_OAT`)
+--no-login                Skip Docker login even if token env is set
+```
+
+Run `agentsystems up --help` for the authoritative list.
+
+### Example: start and watch logs
+
+```bash
+agentsystems up --foreground    # run inside the deployment dir
+```
+
+### Example: fresh restart in CI
+
+```bash
+agentsystems up /opt/agent-platform-deployments --fresh --detach
+```
+
+---
 ### `init` options
 
 ```
@@ -68,6 +93,8 @@ agentsystems init /opt/agentsystems/engine \
 
 ---
 ## Environment variables & `.env`
+
+Docker Hub token *must* include the "Read public repositories" permission so pulls for `postgres`, `redis`, etc. succeed.
 
 | Variable | Purpose |
 |----------|---------|
