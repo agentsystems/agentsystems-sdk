@@ -21,7 +21,9 @@ from typing import List, Optional
 # Load .env before Typer parses env-var options
 dotenv_global = os.getenv("AGENTSYSTEMS_GLOBAL_ENV")
 if dotenv_global:
-    load_dotenv(dotenv_path=dotenv_global)
+    dotenv_global = os.path.expanduser(dotenv_global)
+    if os.path.exists(dotenv_global):
+        load_dotenv(dotenv_path=dotenv_global)
 # Fallback to .env in current working directory (if any)
 load_dotenv()
 
@@ -133,7 +135,15 @@ def init(
 
 
     # ---------- Completion message ----------
-    console.print(Panel.fit(f"✅ [bold green]Initialization complete![/bold green]\n[white]Navigate to[/white] [bold]{project_dir}[/bold]", border_style="green"))
+    next_steps = (
+        f"✅ Initialization complete!\n\n"
+        f"Next steps:\n"
+        f"  1. cd {project_dir}\n"
+        f"  2. cp .env.example .env  # create your configuration\n"
+        f"  3. Edit .env with required tokens (see README).\n"
+        f"  4. Run: agentsystems up\n"
+    )
+    console.print(Panel.fit(next_steps, border_style="green"))
 
 
 @app.command()
@@ -170,7 +180,10 @@ def up(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-
+    # Warn if .env missing
+    env_path = project_dir / '.env'
+    if not env_path.exists():
+        console.print("[yellow]⚠️  No .env file found in project directory. Run `cp .env.example .env` and populate it if required before 'agentsystems up'.[/yellow]")
 
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         if fresh:
