@@ -102,6 +102,7 @@ All releases are driven by the shell script `./scripts/release.sh` which enforce
 
 Environment requirements:
 
+* A **virtual environment** activated (e.g. `python3 -m venv .venv && source .venv/bin/activate`). This avoids the PEP 668 "externally-managed environment" error on macOS/Homebrew Python.
 * `PYPI_API_TOKEN` or `~/.pypirc` for upload.
 * Clean `git` status (no uncommitted files).
 
