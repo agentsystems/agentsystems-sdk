@@ -220,8 +220,33 @@ def down(
             down_cmd.extend(["--env-file", str(env_file)])
         _run(down_cmd)
         prog.update(task, completed=1)
- 
     console.print(Panel.fit("✅ [bold green]Platform stopped[/bold green]", border_style="green"))
+
+
+@app.command()
+def info() -> None:
+    """Display environment and SDK diagnostic information."""
+    import platform, sys, shutil
+
+    console.print(Panel.fit("ℹ️  [bold cyan]AgentSystems SDK info[/bold cyan]", border_style="bright_cyan"))
+
+    rows = [
+        ("SDK version", _metadata.version("agentsystems-sdk")),
+        ("Python", sys.version.split()[0]),
+        ("Platform", platform.platform()),
+    ]
+    docker_path = shutil.which("docker")
+    if docker_path:
+        try:
+            docker_ver = subprocess.check_output(["docker", "--version"], text=True).strip()
+        except Exception:
+            docker_ver = "installed (version unknown)"
+    else:
+        docker_ver = "not found"
+    rows.append(("Docker", docker_ver))
+
+    table_lines = "\n".join(f"[bold]{k:12}[/bold] {v}" for k, v in rows)
+    console.print(table_lines)
 
 
 @app.command()
