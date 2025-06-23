@@ -135,10 +135,11 @@ def init(
 
 
     # ---------- Completion message ----------
+    display_dir = project_dir.name
     next_steps = (
         f"✅ Initialization complete!\n\n"
         f"Next steps:\n"
-        f"  1. cd {project_dir}\n"
+        f"  1. cd {display_dir}\n"
         f"  2. cp .env.example .env  # create your configuration\n"
         f"  3. Edit .env with required tokens (see README).\n"
         f"  4. Run: agentsystems up\n"
