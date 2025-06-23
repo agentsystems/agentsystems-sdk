@@ -124,7 +124,7 @@ echo "# ---------------------------"
 # -------- user confirmation -------------------------------------------------
 if [[ -t 0 ]]; then
   read -r -p "Proceed with release steps? [Y/Yes to confirm]: " resp
-  resp_lower=${resp,,}
+  resp_lower=$(printf '%s' "$resp" | tr '[:upper:]' '[:lower:]')
   if [[ "$resp_lower" != "y" && "$resp_lower" != "yes" ]]; then
     echo "Aborting."; exit 1;
   fi
