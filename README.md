@@ -36,6 +36,7 @@ pipx install --editable .        # live-reloads on file changes
 | `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. |
 | `agentsystems up [PROJECT_DIR]` | Start the full AgentSystems platform with Docker Compose (detached by default). |
 | `agentsystems down [PROJECT_DIR]` | Stop containers (`docker compose down`), optionally `-v` to delete volumes. |
+| `agentsystems logs [PROJECT_DIR]` | Stream or view recent logs (`docker compose logs`). |
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
 
