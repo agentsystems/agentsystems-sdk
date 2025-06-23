@@ -210,20 +210,34 @@ def _ensure_docker_installed() -> None:
 
 
 def _docker_login_if_needed(token: str | None) -> None:
+    """Login to Docker Hub using an isolated config dir to sidestep credential helpers.
+
+    Some environments (notably macOS with Docker Desktop) configure a credential helper
+    that writes to the OS key-chain, which can fail in headless shells. We point
+    DOCKER_CONFIG at a throw-away directory so `docker login` keeps credentials in a
+    plain JSON file instead.
+    """
     if not token:
         return
+
+    import tempfile
+
     registry = "docker.io"
     org = "agentsystems"
     typer.echo("Logging into Docker Hub…")
-    try:
-        subprocess.run(
-            ["docker", "login", registry, "-u", org, "--password-stdin"],
-            input=f"{token}\n".encode(),
-            check=True,
-        )
-    except subprocess.CalledProcessError as exc:
-        typer.secho("Docker login failed", fg=typer.colors.RED)
-        raise typer.Exit(exc.returncode) from exc
+    with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmp_cfg:
+        env = os.environ.copy()
+        env["DOCKER_CONFIG"] = tmp_cfg
+        try:
+            subprocess.run(
+                ["docker", "login", registry, "-u", org, "--password-stdin"],
+                input=f"{token}\n".encode(),
+                check=True,
+                env=env,
+            )
+        except subprocess.CalledProcessError as exc:
+            typer.secho("Docker login failed", fg=typer.colors.RED)
+            raise typer.Exit(exc.returncode) from exc
 
 
 def _required_images() -> List[str]:
