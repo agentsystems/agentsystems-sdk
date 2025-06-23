@@ -31,6 +31,8 @@ pipx install --editable .        # live-reloads on file changes
 ---
 ## CLI commands
 
+All commands are available through `agentsystems` (or the shorter alias `agntsys`).
+
 | Command | Description |
 |---------|-------------|
 | `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. |

@@ -1,6 +1,6 @@
 [project]
 name = "agentsystems-sdk"
-version = "0.2.10"
+version = "0.2.11"
 description = "AgentSystems Python SDK and CLI"
 readme = "README.md"
 authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
@@ -12,6 +12,7 @@ license-files = ["LICENSE", "NOTICE"]
 
 [project.scripts]
 agentsystems = "agentsystems_sdk.cli:app"
+agntsys = "agentsystems_sdk.cli:app"
 
 [build-system]
 requires = ["setuptools>=67", "wheel"]
