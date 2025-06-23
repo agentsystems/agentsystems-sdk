@@ -135,7 +135,7 @@ def init(
 @app.command()
 def up(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    detach: bool = typer.Option(False, '--detach', '-d', help="Run containers in background"),
+    detach: bool = typer.Option(True, '--detach/--foreground', '-d', help="Run containers in background (default) or stream logs in foreground"),
     fresh: bool = typer.Option(False, '--fresh', help="docker compose down -v before starting"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
     docker_token: str | None = typer.Option(None, '--docker-token', envvar='DOCKER_OAT', help="Docker Hub Org Access Token for private images"),
