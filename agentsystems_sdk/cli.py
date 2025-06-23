@@ -263,6 +263,37 @@ def logs(
 
 
 @app.command()
+ def status(
+     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+     service: Optional[str] = typer.Option(None, '--service', '-s', help="Show status for a single service"),
+ ) -> None:
+     """Show running containers and their state (docker compose ps)."""
+
+     console.print(Panel.fit("🩺 [bold cyan]AgentSystems Platform – status[/bold cyan]", border_style="bright_cyan"))
+
+     project_dir = project_dir.expanduser()
+     if not project_dir.exists():
+         typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
+         raise typer.Exit(code=1)
+
+     candidates = [
+         project_dir / 'docker-compose.yml',
+         project_dir / 'docker-compose.yaml',
+         project_dir / 'compose' / 'local' / 'docker-compose.yml',
+     ]
+     compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
+     if compose_file is None:
+         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+         raise typer.Exit(code=1)
+
+     cmd = ["docker", "compose", "-f", str(compose_file), "ps"]
+     if service:
+         cmd.append(service)
+
+     _run(cmd)
+
+
+@app.command()
 def info() -> None:
     """Display environment and SDK diagnostic information."""
     import platform, sys, shutil
