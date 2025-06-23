@@ -121,6 +121,18 @@ echo "Git tag        : $GIT_TAG (create: $CREATE_GIT_TAG)"
 echo "Dry-run        : $DRY_RUN"
 echo "# ---------------------------"
 
+# -------- user confirmation -------------------------------------------------
+if [[ -t 0 ]]; then
+  read -r -p "Proceed with release steps? [Y/Yes to confirm]: " resp
+  resp_lower=${resp,,}
+  if [[ "$resp_lower" != "y" && "$resp_lower" != "yes" ]]; then
+    echo "Aborting."; exit 1;
+  fi
+else
+  echo "Error: interactive confirmation required, but no TTY detected." >&2
+  exit 1
+fi
+
 # -------- verify version matches pyproject.toml -----------------------------
 PY_FOR_VERSION=$(command -v python3 || command -v python)
 if [[ -z "$PY_FOR_VERSION" ]]; then echo "Python interpreter not found"; exit 1; fi
