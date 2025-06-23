@@ -180,10 +180,11 @@ def up(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    # Warn if .env missing
+    # Require .env unless user supplied --env-file
     env_path = project_dir / '.env'
-    if not env_path.exists():
-        console.print("[yellow]⚠️  No .env file found in project directory. Run `cp .env.example .env` and populate it if required before 'agentsystems up'.[/yellow]")
+    if not env_path.exists() and env_file is None:
+        typer.secho("Missing .env file in project directory. Run `cp .env.example .env` and populate it before 'agentsystems up'.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
 
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         if fresh:
@@ -334,6 +335,12 @@ def restart(
     compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
     if compose_file is None:
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    # Ensure .env present unless --env-file supplied
+    env_path = project_dir / '.env'
+    if not env_path.exists() and env_file is None:
+        typer.secho("Missing .env file in project directory. Run `cp .env.example .env` and populate it before 'agentsystems restart'.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
     # down
