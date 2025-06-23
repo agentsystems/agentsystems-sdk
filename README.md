@@ -38,6 +38,7 @@ pipx install --editable .        # live-reloads on file changes
 | `agentsystems down [PROJECT_DIR]` | Stop containers (`docker compose down`), optionally `-v` to delete volumes. |
 | `agentsystems logs [PROJECT_DIR]` | Stream or view recent logs (`docker compose logs`). |
 | `agentsystems status [PROJECT_DIR]` | List running containers and state (`docker compose ps`). |
+| `agentsystems restart [PROJECT_DIR]` | Down then up (no volume deletion by default). |
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
 

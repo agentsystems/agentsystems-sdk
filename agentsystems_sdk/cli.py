@@ -294,6 +294,50 @@ def status(
 
 
 @app.command()
+def restart(
+    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+    volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes during restart"),
+    foreground: bool = typer.Option(False, '--foreground/--detach', help="Run in foreground (stream logs) or detach (default)"),
+    env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
+) -> None:
+    """Restart the platform (down then up)."""
+    console.print(Panel.fit("🔄 [bold cyan]AgentSystems Platform – restart[/bold cyan]", border_style="bright_cyan"))
+
+    project_dir = project_dir.expanduser()
+    if not project_dir.exists():
+        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    candidates = [
+        project_dir / 'docker-compose.yml',
+        project_dir / 'docker-compose.yaml',
+        project_dir / 'compose' / 'local' / 'docker-compose.yml',
+    ]
+    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
+    if compose_file is None:
+        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    # down
+    down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
+    if volumes:
+        down_cmd.append("-v")
+    if env_file:
+        down_cmd.extend(["--env-file", str(env_file)])
+    _run(down_cmd)
+
+    # up
+    up_cmd = ["docker", "compose", "-f", str(compose_file), "up"]
+    if not foreground:
+        up_cmd.append("-d")
+    if env_file:
+        up_cmd.extend(["--env-file", str(env_file)])
+    _run(up_cmd)
+
+    console.print(Panel.fit("✅ [bold green]Platform restarted[/bold green]", border_style="green"))
+
+
+@app.command()
 def info() -> None:
     """Display environment and SDK diagnostic information."""
     import platform, sys, shutil
