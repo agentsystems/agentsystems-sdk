@@ -54,19 +54,19 @@ The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--p
 ---
 ## 4. Release workflow
 
-All releases are driven by the shell script `scripts/release.sh` which enforces version safety and PyPI hygiene.
+All releases are driven by the shell script `./scripts/release.sh` which enforces version safety and PyPI hygiene.
 
 1. **Bump version** inside `pyproject.toml` (`<major>.<minor>.<patch>`).
 2. **Dry-run** everything locally:
 
    ```bash
-   scripts/release.sh --version X.Y.Z --dry-run
+   ./scripts/release.sh --version X.Y.Z --dry-run
    ```
 
 3. **Publish to TestPyPI** (creates/ re-uses git tag):
 
    ```bash
-   scripts/release.sh --version X.Y.Z --test
+   ./scripts/release.sh --version X.Y.Z --test
    pipx install --index-url https://test.pypi.org/simple/ agentsystems-sdk==X.Y.Z
    ```
 
@@ -74,7 +74,7 @@ All releases are driven by the shell script `scripts/release.sh` which enforces 
 5. When satisfied, **promote the same tag to production PyPI**:
 
    ```bash
-   scripts/release.sh --version X.Y.Z --prod
+   ./scripts/release.sh --version X.Y.Z --prod
    ```
 
    The script will refuse to run if the working tree is dirty, if the tag doesn’t match `HEAD`, or if the version already exists on PyPI.
