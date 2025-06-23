@@ -133,6 +133,58 @@ def init(
 
 
 @app.command()
+def up(
+    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+    detach: bool = typer.Option(False, '--detach', '-d', help="Run containers in background"),
+    fresh: bool = typer.Option(False, '--fresh', help="docker compose down -v before starting"),
+    env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
+    docker_token: str | None = typer.Option(None, '--docker-token', envvar='DOCKER_OAT', help="Docker Hub Org Access Token for private images"),
+) -> None:
+    """Start the full AgentSystems platform via docker compose.
+
+    Equivalent to the legacy `make up`. Provides convenience flags and polished output.
+    """
+    console.print(Panel.fit("🐳 [bold cyan]AgentSystems Platform – up[/bold cyan]", border_style="bright_cyan"))
+
+    _ensure_docker_installed()
+    if docker_token:
+        _docker_login_if_needed(docker_token)
+
+    project_dir = project_dir.expanduser()
+    if not project_dir.exists():
+        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    # Detect compose file
+    candidates = [
+        project_dir / 'docker-compose.yml',
+        project_dir / 'docker-compose.yaml',
+        project_dir / 'compose' / 'local' / 'docker-compose.yml',
+    ]
+    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
+    if compose_file is None:
+        typer.secho("docker-compose.yml not found – ensure you passed the project directory", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
+        if fresh:
+            down_task = prog.add_task("Removing previous containers", total=None)
+            _run(["docker", "compose", "-f", str(compose_file), "down", "-v"])
+            prog.update(down_task, completed=1)
+
+        up_cmd = ["docker", "compose", "-f", str(compose_file), "up"]
+        if env_file:
+            up_cmd.extend(["--env-file", str(env_file)])
+        if detach:
+            up_cmd.append("-d")
+
+        prog.add_task("Starting services", total=None)
+        _run(up_cmd)
+
+    console.print(Panel.fit("✅ [bold green]Platform is running![/bold green]", border_style="green"))
+
+
+@app.command()
 def version() -> None:
     """Display the installed SDK version."""
     typer.echo(_metadata.version("agentsystems-sdk"))
