@@ -19,6 +19,10 @@ import sys
 from typing import List, Optional
 
 # Load .env before Typer parses env-var options
+dotenv_global = os.getenv("AGENTSYSTEMS_GLOBAL_ENV")
+if dotenv_global:
+    load_dotenv(dotenv_path=dotenv_global)
+# Fallback to .env in current working directory (if any)
 load_dotenv()
 
 import typer
