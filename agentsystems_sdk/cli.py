@@ -16,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from typing import List, Optional
 
 # Load .env before Typer parses env-var options
@@ -154,6 +155,7 @@ def up(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     detach: bool = typer.Option(True, '--detach/--foreground', '-d', help="Run containers in background (default) or stream logs in foreground"),
     fresh: bool = typer.Option(False, '--fresh', help="docker compose down -v before starting"),
+    wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="After start, wait until gateway is ready (detached mode only)"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
     docker_token: str | None = typer.Option(None, '--docker-token', envvar='DOCKER_OAT', help="Docker Hub Org Access Token for private images"),
 ) -> None:
@@ -203,6 +205,10 @@ def up(
 
         prog.add_task("Starting services", total=None)
         _run(up_cmd)
+
+    # Wait for readiness
+    if detach and wait_ready:
+        _wait_for_gateway_ready(compose_file)
 
     console.print(Panel.fit("✅ [bold green]Platform is running![/bold green]", border_style="green"))
 
@@ -320,6 +326,7 @@ def restart(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes during restart"),
     foreground: bool = typer.Option(False, '--foreground/--detach', help="Run in foreground (stream logs) or detach (default)"),
+    wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="Wait until gateway is ready (detached mode only)"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
 ) -> None:
     """Restart the platform (down then up)."""
@@ -363,6 +370,9 @@ def restart(
         up_cmd.extend(["--env-file", str(env_file)])
     _run(up_cmd)
 
+    if not foreground and wait_ready:
+        _wait_for_gateway_ready(compose_file)
+
     console.print(Panel.fit("✅ [bold green]Platform restarted[/bold green]", border_style="green"))
 
 
@@ -400,6 +410,35 @@ def version() -> None:
 
 # ---------------------------------------------------------------------------
 # helpers
+
+
+def _wait_for_gateway_ready(compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120) -> None:
+    """Stream logs until *service* prints 'Application startup complete.' or timeout."""
+    console.print("[cyan]⌛ Waiting for gateway to become ready…[/cyan]")
+    cmd = ["docker", "compose", "-f", str(compose_file), "logs", "--no-color", "-f", service]
+    start = time.time()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    ready_patterns = [
+        re.compile(r"Application startup complete", re.I),
+        re.compile(r"Uvicorn running", re.I),
+    ]
+    try:
+        for line in proc.stdout:  # type: ignore[attr-defined]
+            if any(p.search(line) for p in ready_patterns):
+                console.print("[green]Gateway ready![/green]")
+                proc.terminate()
+                break
+            if time.time() - start > timeout:
+                console.print("[yellow]Gateway readiness timeout reached – continuing anyway.[/yellow]")
+                proc.terminate()
+                break
+    except Exception:
+        proc.terminate()
+    finally:
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 def _confirm_danger(action: str) -> None:
