@@ -114,6 +114,9 @@ def init(
         finally:
             progress.update(clone_task, completed=1)
 
+            # Remove remote origin to avoid accidental pushes to template repo
+            _run(["git", "-C", str(project_dir), "remote", "remove", "origin"])
+
         progress.add_task("Checking Docker", total=None)
         _ensure_docker_installed()
 
