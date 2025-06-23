@@ -75,9 +75,11 @@ def init(
         if not sys.stdin.isatty():
             typer.secho("TARGET_DIR argument required when running non-interactively.", fg=typer.colors.RED)
             raise typer.Exit(code=1)
-        default_dir = pathlib.Path.cwd() / "agent-platform-deployments"
-        dir_input = typer.prompt("Directory to create", default=str(default_dir))
+        default_name = "agent-platform-deployments"
+        dir_input = typer.prompt("Directory to create", default=default_name)
         project_dir = pathlib.Path(dir_input)
+        if not project_dir.is_absolute():
+            project_dir = pathlib.Path.cwd() / project_dir
 
     project_dir = project_dir.expanduser()
     if project_dir.exists() and any(project_dir.iterdir()):
