@@ -215,6 +215,7 @@ def down(
         task = prog.add_task("Stopping services", total=None)
         down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
         if volumes:
+            _confirm_danger("remove Docker volumes")
             down_cmd.append("-v")
         if env_file:
             down_cmd.extend(["--env-file", str(env_file)])
@@ -321,6 +322,7 @@ def restart(
     # down
     down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
     if volumes:
+        _confirm_danger("remove Docker volumes")
         down_cmd.append("-v")
     if env_file:
         down_cmd.extend(["--env-file", str(env_file)])
@@ -371,6 +373,13 @@ def version() -> None:
 
 # ---------------------------------------------------------------------------
 # helpers
+
+
+def _confirm_danger(action: str) -> None:
+    """Prompt the user to confirm a destructive *action* (like erasing volumes)."""
+    if not typer.confirm(f"⚠️  This will {action} and data may be lost. Continue?", default=False):
+        raise typer.Exit(code=1)
+
 # ---------------------------------------------------------------------------
 
 def _run(cmd: List[str]) -> None:
