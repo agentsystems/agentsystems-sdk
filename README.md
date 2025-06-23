@@ -35,12 +35,12 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 
 | Command | Description |
 |---------|-------------|
-| `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. |
-| `agentsystems up [PROJECT_DIR]` | Start the full AgentSystems platform with Docker Compose (detached by default). |
+| `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. After it finishes, **run `cp .env.example .env` inside the directory and populate required tokens**. |
+| `agentsystems up [PROJECT_DIR]` | Start the platform (`docker compose up`). **Requires a populated `.env` file in the project directory** (or pass `--env-file PATH`). |
 | `agentsystems down [PROJECT_DIR]` | Stop containers (`docker compose down`). Pass `-v/--volumes` to delete named volumes (interactive confirmation). |
 | `agentsystems logs [PROJECT_DIR]` | Stream or view recent logs (`docker compose logs`). |
 | `agentsystems status [PROJECT_DIR]` | List running containers and state (`docker compose ps`). |
-| `agentsystems restart [PROJECT_DIR]` | Bounce the stack (`down` → `up`). Add `-v/--volumes` to delete volumes (interactive confirmation). |
+| `agentsystems restart [PROJECT_DIR]` | Quick bounce (`down` → `up`). **Requires `.env`**. Add `-v/--volumes` to delete volumes (confirmation). |
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
 

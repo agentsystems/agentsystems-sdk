@@ -36,6 +36,9 @@ Tokens can be supplied via `--gh-token / --docker-token` flags or loaded automat
 
 ```bash
 agentsystems init ~/tmp/agent-platform-deployments           # interactive
+cd ~/tmp/agent-platform-deployments
+cp .env.example .env                               # create your config
+# edit .env with GitHub and Docker tokens
 
 # headless / CI
 GITHUB_TOKEN=ghp_xxx DOCKER_OAT=st_xxx \
@@ -47,7 +50,7 @@ GITHUB_TOKEN=ghp_xxx DOCKER_OAT=st_xxx \
 ```bash
 cd ~/tmp/agent-platform-deployments   # or pass the path explicitly
 
-# default: detached, returns immediately
+# default: detached, returns immediately (requires .env in this directory)
 agentsystems up
 
 # watch logs in foreground
