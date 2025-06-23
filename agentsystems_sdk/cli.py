@@ -166,12 +166,7 @@ def up(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    # Ensure env file exists if compose expects one two directories above
-    root_dir = compose_file.parent.parent
-    default_env = root_dir / '.env'
-    if env_file is None and not default_env.exists():
-        default_env.touch()
-        console.print(f"[yellow]Created empty {default_env} (compose requires it). Populate it as needed.[/yellow]")
+
 
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         if fresh:
@@ -182,8 +177,6 @@ def up(
         up_cmd = ["docker", "compose", "-f", str(compose_file), "up"]
         if env_file:
             up_cmd.extend(["--env-file", str(env_file)])
-        elif default_env.exists():
-            up_cmd.extend(["--env-file", str(default_env)])
         if detach:
             up_cmd.append("-d")
 
