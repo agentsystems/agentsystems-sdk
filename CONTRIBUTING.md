@@ -55,6 +55,9 @@ agentsystems up --foreground
 
 # fresh restart (down -v, then up -d)
 agentsystems up --fresh
+
+# stop everything and remove volumes
+agentsystems down --volumes
 ```
 
 `DOCKER_OAT` must have the **"Read public repositories"** permission so pulls for `postgres`, `redis`, etc. succeed.

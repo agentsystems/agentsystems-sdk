@@ -187,6 +187,44 @@ def up(
 
 
 @app.command()
+def down(
+    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+    volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes (docker compose down -v)"),
+    env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
+) -> None:
+    """Stop the AgentSystems platform containers and optionally remove volumes."""
+    console.print(Panel.fit("🛑 [bold cyan]AgentSystems Platform – down[/bold cyan]", border_style="bright_cyan"))
+ 
+    project_dir = project_dir.expanduser()
+    if not project_dir.exists():
+        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+ 
+    # Detect compose file (same heuristics as `up`)
+    candidates = [
+        project_dir / 'docker-compose.yml',
+        project_dir / 'docker-compose.yaml',
+        project_dir / 'compose' / 'local' / 'docker-compose.yml',
+    ]
+    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
+    if compose_file is None:
+        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+ 
+    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
+        task = prog.add_task("Stopping services", total=None)
+        down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
+        if volumes:
+            down_cmd.append("-v")
+        if env_file:
+            down_cmd.extend(["--env-file", str(env_file)])
+        _run(down_cmd)
+        prog.update(task, completed=1)
+ 
+    console.print(Panel.fit("✅ [bold green]Platform stopped[/bold green]", border_style="green"))
+
+
+@app.command()
 def version() -> None:
     """Display the installed SDK version."""
     typer.echo(_metadata.version("agentsystems-sdk"))
