@@ -166,6 +166,11 @@ else
   rm -rf dist
   # choose python interpreter (prefer 'python3', fallback to 'python')
   if command -v python3 &>/dev/null; then PY=python3; elif command -v python &>/dev/null; then PY=python; else echo "No python interpreter found"; exit 1; fi
+  # ensure 'build' package is available
+  if ! "$PY" -m pip show build >/dev/null 2>&1; then
+    echo "Installing 'build' module…"
+    "$PY" -m pip install --upgrade build
+  fi
   "$PY" -m build --sdist --wheel
   echo "Built distributions in dist/"
 fi
