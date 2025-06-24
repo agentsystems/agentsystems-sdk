@@ -36,7 +36,7 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | Command | Description |
 |---------|-------------|
 | `agentsystems init [TARGET_DIR]` | Clone the deployment template and pull required Docker images into `TARGET_DIR`. After it finishes, **run `cp .env.example .env` inside the directory and populate required tokens**. |
-| `agentsystems up [PROJECT_DIR]` | Start the platform (`docker compose up`). **Waits for the gateway to be ready by default (spinner)**. Pass `--no-wait` to skip. Requires a populated `.env` file (or use `--env-file PATH`). |
+| `agentsystems up [PROJECT_DIR]` | Start the platform **plus Langfuse tracing stack** (`docker compose up`). **Waits for the gateway to be ready by default (spinner)**. Pass `--no-wait` to skip readiness wait or `--no-langfuse` to disable tracing. Requires a populated `.env` file (or use `--env-file PATH`). |
 | `agentsystems down [PROJECT_DIR]` | Stop containers (`docker compose down`). Pass `-v/--volumes` to delete named volumes (interactive confirmation). |
 | `agentsystems logs [PROJECT_DIR]` | Stream or view recent logs (`docker compose logs`). |
 | `agentsystems status [PROJECT_DIR]` | List running containers and state (`docker compose ps`). |
@@ -53,9 +53,18 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 --wait / --no-wait        Wait for gateway readiness (default: --wait)
 --docker-token TEXT       Docker Hub Org Access Token (env `DOCKER_OAT`)
 --no-login                Skip Docker login even if token env is set
+--no-langfuse             Skip the Langfuse tracing stack (core services only)
 ```
 
 Run `agentsystems up --help` for the authoritative list.
+
+---
+### Tracing & observability (Langfuse)
+
+By default the CLI starts the [Langfuse](https://langfuse.com/) tracing stack alongside the core services and exposes its UI at <http://localhost:3000>. You can explore request traces and performance metrics there while developing.
+
+If you prefer to run only the core platform (for example on a small CI runner) pass `--no-langfuse` to any stack command (`up`, `down`, `restart`, `logs`, `status`).
+
 
 ### Example: start and watch logs
 
