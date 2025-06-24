@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import time
+import itertools
 from typing import List, Optional
 
 # Load .env before Typer parses env-var options
@@ -159,6 +160,7 @@ def up(
     detach: bool = typer.Option(True, '--detach/--foreground', '-d', help="Run containers in background (default) or stream logs in foreground"),
     fresh: bool = typer.Option(False, '--fresh', help="docker compose down -v before starting"),
     wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="After start, wait until gateway is ready (detached mode only)"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
     docker_token: str | None = typer.Option(None, '--docker-token', envvar='DOCKER_OAT', help="Docker Hub Org Access Token for private images"),
 ) -> None:
@@ -177,16 +179,8 @@ def up(
         typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    # Detect compose file
-    candidates = [
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-    ]
-    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
-    if compose_file is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
+    # Build compose arguments (core + optional Langfuse stack)
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
 
     # Require .env unless user supplied --env-file
     env_path = project_dir / '.env'
@@ -197,10 +191,10 @@ def up(
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         if fresh:
             down_task = prog.add_task("Removing previous containers", total=None)
-            _run(["docker", "compose", "-f", str(compose_file), "down", "-v"])
+            _run(["docker", "compose", *compose_args, "down", "-v"])
             prog.update(down_task, completed=1)
 
-        up_cmd = ["docker", "compose", "-f", str(compose_file), "up"]
+        up_cmd = ["docker", "compose", *compose_args, "up"]
         if env_file:
             up_cmd.extend(["--env-file", str(env_file)])
         if detach:
@@ -211,7 +205,7 @@ def up(
 
     # Wait for readiness
     if detach and wait_ready:
-        _wait_for_gateway_ready(compose_file)
+        _wait_for_gateway_ready(core_compose)
 
     console.print(Panel.fit("✅ [bold green]Platform is running![/bold green]", border_style="green"))
 
@@ -220,6 +214,7 @@ def up(
 def down(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes (docker compose down -v)"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
 ) -> None:
     """Stop the AgentSystems platform containers and optionally remove volumes."""
@@ -230,20 +225,11 @@ def down(
         typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
         raise typer.Exit(code=1)
  
-    # Detect compose file (same heuristics as `up`)
-    candidates = [
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-    ]
-    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
-    if compose_file is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
  
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         task = prog.add_task("Stopping services", total=None)
-        down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
+        down_cmd = ["docker", "compose", *compose_args, "down"]
         if volumes:
             _confirm_danger("remove Docker volumes")
             down_cmd.append("-v")
@@ -258,6 +244,7 @@ def down(
 def logs(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     service: Optional[str] = typer.Option(None, '--service', '-s', help="Filter logs to a single service"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
     tail: int = typer.Option(100, '--tail', help="Number of recent lines to show"),
     since: Optional[str] = typer.Option(None, '--since', help="Show logs since timestamp or relative e.g. 10m"),
     follow: bool = typer.Option(True, '--follow/--no-follow', help="Stream logs (default on)"),
@@ -280,7 +267,8 @@ def logs(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    cmd = ["docker", "compose", "-f", str(compose_file), "logs"]
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+    cmd = ["docker", "compose", *compose_args, "logs"]
     if follow:
         cmd.append("--follow")
     if tail is not None:
@@ -297,6 +285,7 @@ def logs(
 def status(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     service: Optional[str] = typer.Option(None, '--service', '-s', help="Show status for a single service"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
 ) -> None:
     """Show running containers and their state (docker compose ps)."""
 
@@ -317,7 +306,8 @@ def status(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    cmd = ["docker", "compose", "-f", str(compose_file), "ps"]
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+    cmd = ["docker", "compose", *compose_args, "ps"]
     if service:
         cmd.append(service)
 
@@ -329,6 +319,7 @@ def restart(
     project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
     volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes during restart"),
     foreground: bool = typer.Option(False, '--foreground/--detach', help="Run in foreground (stream logs) or detach (default)"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
     wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="Wait until gateway is ready (detached mode only)"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
 ) -> None:
@@ -350,6 +341,8 @@ def restart(
         typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+
     # Ensure .env present unless --env-file supplied
     env_path = project_dir / '.env'
     if not env_path.exists() and env_file is None:
@@ -357,7 +350,7 @@ def restart(
         raise typer.Exit(code=1)
 
     # down
-    down_cmd = ["docker", "compose", "-f", str(compose_file), "down"]
+    down_cmd = ["docker", "compose", *compose_args, "down"]
     if volumes:
         _confirm_danger("remove Docker volumes")
         down_cmd.append("-v")
@@ -366,7 +359,7 @@ def restart(
     _run(down_cmd)
 
     # up
-    up_cmd = ["docker", "compose", "-f", str(compose_file), "up"]
+    up_cmd = ["docker", "compose", *compose_args, "up"]
     if not foreground:
         up_cmd.append("-d")
     if env_file:
@@ -374,7 +367,7 @@ def restart(
     _run(up_cmd)
 
     if not foreground and wait_ready:
-        _wait_for_gateway_ready(compose_file)
+        _wait_for_gateway_ready(core_compose)
 
     console.print(Panel.fit("✅ [bold green]Platform restarted[/bold green]", border_style="green"))
 
@@ -413,6 +406,28 @@ def version() -> None:
 
 # ---------------------------------------------------------------------------
 # helpers
+
+
+def _compose_args(project_dir: pathlib.Path, no_langfuse: bool) -> tuple[pathlib.Path, list[str]]:
+    """Return (core_compose_path, list_of_-f_args) respecting *no_langfuse*."""
+    # core compose – prefer explicit local file
+    core_candidates = [
+        project_dir / 'compose' / 'local' / 'docker-compose.yml',
+        project_dir / 'docker-compose.yml',
+        project_dir / 'docker-compose.yaml',
+    ]
+    core: pathlib.Path | None = next((p for p in core_candidates if p.exists()), None)
+    if core is None:
+        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    args = ["-f", str(core)]
+
+    if not no_langfuse:
+        lf = project_dir / 'compose' / 'langfuse' / 'docker-compose.yml'
+        if lf.exists():
+            args.extend(["-f", str(lf)])
+    return core, args
 
 
 def _wait_for_gateway_ready(compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120) -> None:
