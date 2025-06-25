@@ -8,7 +8,8 @@ import importlib.metadata as _metadata
 
 import os
 import pathlib
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
+import secrets
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
@@ -141,15 +142,26 @@ def init(
 
 
 
+    # ---------- .env setup ----------
+    env_example = project_dir / ".env.example"
+    env_file = project_dir / ".env"
+    if env_example.exists() and not env_file.exists():
+        shutil.copy(env_example, env_file)
+        env_file = project_dir / ".env"
+    else:
+        env_file = env_file if env_file.exists() else env_example
+
+    if sys.stdin.isatty() and env_file and env_file.exists():
+        _configure_env(env_file)
+
     # ---------- Completion message ----------
     display_dir = project_dir.name
     next_steps = (
         f"✅ Initialization complete!\n\n"
         f"Next steps:\n"
         f"  1. cd {display_dir}\n"
-        f"  2. cp .env.example .env  # create your configuration\n"
-        f"  3. Edit .env with required tokens (see README).\n"
-        f"  4. Run: agentsystems up\n"
+        f"  2. Review .env and adjust if needed.\n"
+        f"  3. Run: agentsystems up\n"
     )
     console.print(Panel.fit(next_steps, border_style="green"))
 
@@ -406,6 +418,56 @@ def version() -> None:
 
 # ---------------------------------------------------------------------------
 # helpers
+
+def _configure_env(env_path: pathlib.Path) -> None:
+    """Interactively configure the .env file copied from .env.example."""
+    import re
+
+    console.print(Panel.fit("🔑 [bold cyan]Configure Langfuse environment[/bold cyan]", border_style="bright_cyan"))
+
+    # Organization
+    org_name = typer.prompt("Organization name", default="ExampleOrg")
+    org_id = re.sub(r"[^a-z0-9]+", "-", org_name.lower()).strip("-") or "org"
+
+    # Project defaults
+    project_id = "default"
+    project_name = "Default"
+
+    # User defaults and prompts
+    user_name = "Admin"
+
+    # Email prompt with validation
+    while True:
+        email = typer.prompt("Admin email")
+        if re.match(r"[^@]+@[^@]+\.[^@]+", email):
+            break
+        console.print("[red]Please enter a valid email address.[/red]")
+
+    # Password prompt with minimum length check
+    while True:
+        password = typer.prompt("Admin password (min 6 chars)", hide_input=True)
+        if len(password) >= 6:
+            break
+        console.print("[red]Password must be at least 6 characters.[/red]")
+
+    # Key generation
+    pub_key = "pk-lf-" + secrets.token_hex(16)
+    secret_key = "sk-lf-" + secrets.token_hex(16)
+
+    # Write values to .env
+    set_key(str(env_path), "LANGFUSE_INIT_ORG_ID", org_id)
+    set_key(str(env_path), "LANGFUSE_INIT_ORG_NAME", org_name)
+    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_ID", project_id)
+    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_NAME", project_name)
+    set_key(str(env_path), "LANGFUSE_INIT_USER_NAME", user_name)
+    set_key(str(env_path), "LANGFUSE_INIT_USER_EMAIL", email)
+    set_key(str(env_path), "LANGFUSE_INIT_USER_PASSWORD", password)
+    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_PUBLIC_KEY", pub_key)
+    set_key(str(env_path), "LANGFUSE_PUBLIC_KEY", pub_key)
+    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_SECRET_KEY", secret_key)
+    set_key(str(env_path), "LANGFUSE_SECRET_KEY", secret_key)
+
+    console.print("[green]✓ .env configured.[/green]")
 
 
 def _compose_args(project_dir: pathlib.Path, no_langfuse: bool) -> tuple[pathlib.Path, list[str]]:
