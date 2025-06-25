@@ -445,10 +445,10 @@ def _configure_env(env_path: pathlib.Path) -> None:
 
     # Password prompt with minimum length check
     while True:
-        password = typer.prompt("Admin password (min 6 chars)", hide_input=True)
-        if len(password) >= 6:
+        password = typer.prompt("Admin password (min 8 chars)", hide_input=True)
+        if len(password) >= 8:
             break
-        console.print("[red]Password must be at least 6 characters.[/red]")
+        console.print("[red]Password must be at least 8 characters.[/red]")
 
     # Key generation (UUID4 to match pk/sk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
     pub_key = f"pk-lf-{uuid.uuid4()}"
