@@ -9,7 +9,7 @@ import importlib.metadata as _metadata
 import os
 import pathlib
 from dotenv import load_dotenv, set_key
-import secrets
+import uuid
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
@@ -450,11 +450,11 @@ def _configure_env(env_path: pathlib.Path) -> None:
             break
         console.print("[red]Password must be at least 6 characters.[/red]")
 
-    # Key generation
-    pub_key = "pk-lf-" + secrets.token_hex(16)
-    secret_key = "sk-lf-" + secrets.token_hex(16)
+    # Key generation (UUID4 to match pk/sk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
+    pub_key = f"pk-lf-{uuid.uuid4()}"
+    secret_key = f"sk-lf-{uuid.uuid4()}"
 
-    # Write values to .env
+    # Write values to .env (will overwrite the placeholder lines)
     set_key(str(env_path), "LANGFUSE_INIT_ORG_ID", org_id)
     set_key(str(env_path), "LANGFUSE_INIT_ORG_NAME", org_name)
     set_key(str(env_path), "LANGFUSE_INIT_PROJECT_ID", project_id)
@@ -466,6 +466,36 @@ def _configure_env(env_path: pathlib.Path) -> None:
     set_key(str(env_path), "LANGFUSE_PUBLIC_KEY", pub_key)
     set_key(str(env_path), "LANGFUSE_INIT_PROJECT_SECRET_KEY", secret_key)
     set_key(str(env_path), "LANGFUSE_SECRET_KEY", secret_key)
+
+    # ------------------------------------------------------------------
+    # Re-format: keep runtime vars at top, move init vars (commented) to
+    # the bottom with a notice so the user can still reference them.
+    # ------------------------------------------------------------------
+    try:
+        lines = env_path.read_text().splitlines()
+    except Exception as exc:
+        console.print(f"[yellow]Could not reformat .env: {exc}[/yellow]")
+    else:
+        init_lines = []
+        other_lines = []
+        for ln in lines:
+            # strip leading comment when matching
+            stripped = ln.lstrip("# ")
+            if stripped.startswith("LANGFUSE_INIT_"):
+                # store original line (uncommented) for accuracy
+                key, _, val = stripped.partition("=")
+                init_lines.append(f"{key}={val}")
+            else:
+                other_lines.append(ln)
+
+        if init_lines:
+            notice = (
+                "# --- Langfuse initialization values (no longer used after first start) ---\n"
+                "# You can remove these lines or keep them for reference.\n"
+            )
+            commented_inits = [f"# {l}" for l in init_lines]
+            new_content = "\n".join(other_lines + ["", notice] + commented_inits) + "\n"
+            env_path.write_text(new_content)
 
     console.print("[green]✓ .env configured.[/green]")
 
