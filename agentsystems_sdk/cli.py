@@ -456,11 +456,8 @@ def _configure_env(env_path: pathlib.Path) -> None:
 
     # Helper to write without quotes
     def _set(k: str, v: str) -> None:
-        # .env values cannot contain unquoted spaces; replace them with underscores to avoid quoting.
-        if " " in v:
-            v = v.replace(" ", "_")
-            console.print(f"[yellow]Spaces replaced with underscores in value for {k}.[/yellow]")
-        set_key(str(env_path), k, v, quote_mode="never")
+        # Write value wrapped in double quotes
+        set_key(str(env_path), k, f'"{v}"', quote_mode="never")
 
     # Write values to .env (overwrite placeholders)
     _set("LANGFUSE_INIT_ORG_ID", org_id)
