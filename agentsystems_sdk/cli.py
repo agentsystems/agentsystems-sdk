@@ -273,6 +273,11 @@ def up(
         prog.add_task("Starting services", total=None)
         _run(up_cmd)
 
+        # After successful startup, clean up init vars in the env file so they don't confuse users
+        target_env_path = env_file if env_file else env_path
+        if target_env_path.exists():
+            _cleanup_init_vars(target_env_path)
+
     # Wait for readiness
     if detach and wait_ready:
         _wait_for_gateway_ready(core_compose)
@@ -564,6 +569,35 @@ def _configure_env(env_path: pathlib.Path) -> None:
             env_path.write_text(new_content)
 
     console.print("[green]✓ .env configured.[/green]")
+
+
+def _cleanup_init_vars(env_path: pathlib.Path) -> None:
+    """Comment out LANGFUSE_INIT_* variables in the given .env file.
+    After first startup they are no longer required but useful for reference.
+    Keeps runtime vars at top, appends commented init vars to bottom with a notice."""
+    try:
+        lines = env_path.read_text().splitlines()
+    except Exception:
+        return
+
+    init_lines: list[str] = []
+    other_lines: list[str] = []
+    for ln in lines:
+        stripped = ln.lstrip("# ")
+        if stripped.startswith("LANGFUSE_INIT_"):
+            key, _, val = stripped.partition("=")
+            init_lines.append(f"{key}={val}")
+        else:
+            other_lines.append(ln)
+
+    if init_lines:
+        notice = (
+            "# --- Langfuse initialization values (no longer used after first start) ---\n"
+            "# You can remove these lines or keep them for reference.\n"
+        )
+        commented = [f"# {l}" for l in init_lines]
+        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
+        env_path.write_text(new_content)
 
 
 def _compose_args(project_dir: pathlib.Path, no_langfuse: bool) -> tuple[pathlib.Path, list[str]]:
