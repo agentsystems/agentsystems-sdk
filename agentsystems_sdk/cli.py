@@ -90,6 +90,39 @@ def init(
         raise typer.Exit(code=1)
 
     # Prompt for missing tokens only if running interactively
+
+    # ---------- Langfuse initial setup prompts ----------
+    if sys.stdin.isatty():
+        console.print("\n[bold cyan]Langfuse initial setup[/bold cyan]")
+        import re, uuid
+        org_name = typer.prompt("Organization name", default="ExampleOrg")
+        org_id = re.sub(r"[^a-z0-9]+", "-", org_name.lower()).strip("-") or "org"
+        project_id = "default"
+        project_name = "Default"
+        user_name = "Admin"
+        while True:
+            email = typer.prompt("Admin email")
+            if re.match(r"[^@]+@[^@]+\.[^@]+", email):
+                break
+            console.print("[red]Please enter a valid email address.[/red]")
+        while True:
+            password = typer.prompt("Admin password (min 8 chars)", hide_input=True)
+            if len(password) >= 8:
+                break
+            console.print("[red]Password must be at least 8 characters.[/red]")
+        pub_key = f"pk-lf-{uuid.uuid4()}"
+        secret_key = f"sk-lf-{uuid.uuid4()}"
+    else:
+        import uuid
+        org_name = "ExampleOrg"
+        org_id = "org"
+        project_id = "default"
+        project_name = "Default"
+        user_name = "Admin"
+        email = ""
+        password = ""
+        pub_key = f"pk-lf-{uuid.uuid4()}"
+        secret_key = f"sk-lf-{uuid.uuid4()}"
     if gh_token is None and sys.stdin.isatty():
         gh_token = typer.prompt("GitHub token (leave blank if repo is public)", default="", hide_input=True) or None
     if docker_token is None and sys.stdin.isatty():
@@ -119,6 +152,32 @@ def init(
             # Remove remote origin to avoid accidental pushes to template repo
             _run(["git", "-C", str(project_dir), "remote", "remove", "origin"])
 
+            # ---------- Write Langfuse .env ----------
+            env_example = project_dir / ".env.example"
+            env_file = project_dir / ".env"
+            if env_example.exists() and not env_file.exists():
+                shutil.copy(env_example, env_file)
+                env_file = project_dir / ".env"
+            else:
+                env_file = env_file if env_file.exists() else env_example
+
+            from dotenv import set_key as _sk
+            for k, v in {
+                "LANGFUSE_INIT_ORG_ID": org_id,
+                "LANGFUSE_INIT_ORG_NAME": org_name,
+                "LANGFUSE_INIT_PROJECT_ID": project_id,
+                "LANGFUSE_INIT_PROJECT_NAME": project_name,
+                "LANGFUSE_INIT_USER_NAME": user_name,
+                "LANGFUSE_INIT_USER_EMAIL": email,
+                "LANGFUSE_INIT_USER_PASSWORD": password,
+                "LANGFUSE_INIT_PROJECT_PUBLIC_KEY": pub_key,
+                "LANGFUSE_INIT_PROJECT_SECRET_KEY": secret_key,
+                "LANGFUSE_PUBLIC_KEY": pub_key,
+                "LANGFUSE_SECRET_KEY": secret_key,
+            }.items():
+                _sk(str(env_file), k, f'"{v}"', quote_mode="never")
+            console.print("[green]✓ .env configured.[/green]")
+
         progress.add_task("Checking Docker", total=None)
         _ensure_docker_installed()
 
@@ -142,7 +201,7 @@ def init(
 
 
 
-    # ---------- .env setup ----------
+
     env_example = project_dir / ".env.example"
     env_file = project_dir / ".env"
     if env_example.exists() and not env_file.exists():
@@ -151,8 +210,7 @@ def init(
     else:
         env_file = env_file if env_file.exists() else env_example
 
-    if sys.stdin.isatty() and env_file and env_file.exists():
-        _configure_env(env_file)
+
 
     # ---------- Completion message ----------
     display_dir = project_dir.name
