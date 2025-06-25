@@ -454,18 +454,29 @@ def _configure_env(env_path: pathlib.Path) -> None:
     pub_key = f"pk-lf-{uuid.uuid4()}"
     secret_key = f"sk-lf-{uuid.uuid4()}"
 
-    # Write values to .env (will overwrite the placeholder lines)
-    set_key(str(env_path), "LANGFUSE_INIT_ORG_ID", org_id)
-    set_key(str(env_path), "LANGFUSE_INIT_ORG_NAME", org_name)
-    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_ID", project_id)
-    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_NAME", project_name)
-    set_key(str(env_path), "LANGFUSE_INIT_USER_NAME", user_name)
-    set_key(str(env_path), "LANGFUSE_INIT_USER_EMAIL", email)
-    set_key(str(env_path), "LANGFUSE_INIT_USER_PASSWORD", password)
-    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_PUBLIC_KEY", pub_key)
-    set_key(str(env_path), "LANGFUSE_PUBLIC_KEY", pub_key)
-    set_key(str(env_path), "LANGFUSE_INIT_PROJECT_SECRET_KEY", secret_key)
-    set_key(str(env_path), "LANGFUSE_SECRET_KEY", secret_key)
+    # Helper to write without quotes
+    def _set(k: str, v: str) -> None:
+        # .env values cannot contain unquoted spaces; replace them with underscores to avoid quoting.
+        if " " in v:
+            v = v.replace(" ", "_")
+            console.print(f"[yellow]Spaces replaced with underscores in value for {k}.[/yellow]")
+        set_key(str(env_path), k, v, quote_mode="never")
+
+    # Write values to .env (overwrite placeholders)
+    _set("LANGFUSE_INIT_ORG_ID", org_id)
+    _set("LANGFUSE_INIT_ORG_NAME", org_name)
+    _set("LANGFUSE_INIT_PROJECT_ID", project_id)
+    _set("LANGFUSE_INIT_PROJECT_NAME", project_name)
+    _set("LANGFUSE_INIT_USER_NAME", user_name)
+    _set("LANGFUSE_INIT_USER_EMAIL", email)
+    _set("LANGFUSE_INIT_USER_PASSWORD", password)
+    _set("LANGFUSE_INIT_PROJECT_PUBLIC_KEY", pub_key)
+    _set("LANGFUSE_PUBLIC_KEY", pub_key)
+    _set("LANGFUSE_INIT_PROJECT_SECRET_KEY", secret_key)
+    _set("LANGFUSE_SECRET_KEY", secret_key)
+
+    console.print("[green]✓ .env configured (init vars remain).[/green]")
+    return
 
     # ------------------------------------------------------------------
     # Re-format: keep runtime vars at top, move init vars (commented) to
