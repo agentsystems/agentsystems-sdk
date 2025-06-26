@@ -59,6 +59,30 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 Run `agentsystems up --help` for the authoritative list.
 
 ---
+### Registry catalogue commands
+
+Manage approved container registries stored in the Agent Control Plane.
+
+```bash
+# list (should be empty on first run)
+agentsystems registry list
+
+# add the default AgentSystems registry (basic auth)
+agentsystems registry add https://registry.agentsystems.ai \
+        --name agentsystems-default \
+        --auth basic -u <user> -p <token>
+
+# disable later if needed
+agentsystems registry toggle <REGISTRY_ID> --disable
+```
+
+By default the CLI talks to `http://localhost:18080`. If your gateway is elsewhere set:
+
+```bash
+export AGENT_GATEWAY=http://my-gateway.example.com:8080
+```
+
+---
 ### Tracing & observability (Langfuse)
 
 By default the CLI starts the [Langfuse](https://langfuse.com/) tracing stack alongside the core services and exposes its UI at <http://localhost:3000>. You can explore request traces and performance metrics there while developing.
