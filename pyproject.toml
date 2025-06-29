@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
 license = "Apache-2.0"
 requires-python = ">=3.11"
-dependencies = ["typer[all]>=0.9", "python-dotenv>=1.0", "rich>=13.7"]
+dependencies = ["typer[all]>=0.9", "python-dotenv>=1.0", "rich>=13.7", "docker>=7.0"]
 
 license-files = ["LICENSE", "NOTICE"]
 

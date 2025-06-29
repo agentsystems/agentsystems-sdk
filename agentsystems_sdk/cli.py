@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn, TimeElapsedColumn
 import re
 import shutil
+import docker
 import subprocess
 import sys
 import time
@@ -671,10 +672,21 @@ def _run(cmd: List[str]) -> None:
         raise typer.Exit(exc.returncode) from exc
 
 
+def _ensure_agents_net() -> None:
+    """Ensure the shared bridge network exists (agents-net)."""
+    try:
+        docker.from_env().networks.get("agents-net")
+    except docker.errors.NotFound:
+        docker.from_env().networks.create("agents-net", driver="bridge")
+        console.print("[green]✓ Created Docker network 'agents-net'[/green]")
+
+
 def _ensure_docker_installed() -> None:
+    """Verify Docker CLI is available and ensure the shared network exists."""
     if shutil.which("docker") is None:
         typer.secho("Docker CLI not found. Please install Docker Desktop and retry.", fg=typer.colors.RED)
         raise typer.Exit(code=1)
+    _ensure_agents_net()
 
 
 def _docker_login_if_needed(token: str | None) -> None:
