@@ -22,6 +22,8 @@ import time
 import itertools
 from typing import List, Optional
 
+from agentsystems_sdk.config import Config  # new
+
 # Load .env before Typer parses env-var options
 dotenv_global = os.getenv("AGENTSYSTEMS_GLOBAL_ENV")
 if dotenv_global:
@@ -245,6 +247,19 @@ def up(
     if docker_token:
         _docker_login_if_needed(docker_token)
 
+    # --------------------------------------------------
+    # Load agentsystems-config.yml if present
+    cfg_path = project_dir / "agentsystems-config.yml"
+    cfg: Config | None = None
+    if cfg_path.exists():
+        try:
+            cfg = Config(cfg_path)
+            console.print(f"[cyan]✓ Loaded config ({len(cfg.agents)} agents, {len(cfg.enabled_registries())} registries).[/cyan]")
+        except Exception as e:
+            typer.secho(f"Error parsing {cfg_path}: {e}", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+    # --------------------------------------------------
+
     project_dir = project_dir.expanduser()
     if not project_dir.exists():
         typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
@@ -278,6 +293,11 @@ def up(
         target_env_path = env_file if env_file else env_path
         if target_env_path.exists():
             _cleanup_init_vars(target_env_path)
+
+    # --------------------------------------------------
+    # If config specified agents, ensure registries are logged in & images pulled, then run containers
+    if cfg:
+        _setup_agents_from_config(cfg, project_dir)
 
     # Wait for readiness
     if detach and wait_ready:
@@ -718,6 +738,105 @@ def _docker_login_if_needed(token: str | None) -> None:
         except subprocess.CalledProcessError as exc:
             typer.secho("Docker login failed", fg=typer.colors.RED)
             raise typer.Exit(exc.returncode) from exc
+
+
+# Marketplace helpers -------------------------------------------------------
+
+def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
+    """Ensure registry login, pull images, start agent containers using docker CLI.
+
+    Uses `--env-file` so secrets stay on disk and aren’t read into Python
+    process memory – mirroring the docker-compose env_file pattern users
+    are familiar with.
+    """
+    import tempfile
+    client = docker.from_env()
+    _ensure_agents_net()
+
+    # 1. Registry logins
+    for reg in cfg.enabled_registries():
+        method = reg.login_method()
+        if method == "none":
+            continue
+        if method == "basic":
+            user = os.getenv(reg.username_env() or "")
+            pw = os.getenv(reg.password_env() or "")
+            if not (user and pw):
+                console.print(f"[yellow]Skipping login to {reg.url} – missing creds.[/yellow]")
+                continue
+            _run(["docker", "login", reg.url, "-u", user, "-p", pw])
+        elif method in {"bearer", "token"}:
+            token = os.getenv(reg.token_env() or "")
+            if not token:
+                console.print(f"[yellow]Skipping login to {reg.url} – missing token.[/yellow]")
+                continue
+            with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmpcfg:
+                env = os.environ.copy()
+                env["DOCKER_CONFIG"] = tmpcfg
+                subprocess.run(["docker", "login", reg.url, "--username", "oauth2", "--password-stdin"], input=f"{token}\n".encode(), check=True, env=env)
+
+    # 2. Pull images
+    for img in cfg.images():
+        console.print(f"[cyan]Pulling {img}…[/cyan]")
+        _run(["docker", "pull", img])
+
+    # 3. Start containers
+    env_file_path = project_dir / ".env"
+    if not env_file_path.exists():
+        console.print("[yellow]No .env file found – agents will run without extra environment variables.[/yellow]")
+
+    for agent in cfg.agents:
+        cname = f"agent-{agent.name}"
+        try:
+            client.containers.get(cname)
+            console.print(f"[green]✓ {cname} already running.[/green]")
+            continue
+        except docker.errors.NotFound:
+            pass
+
+        labels = {"agent.enabled": "true"}
+        labels.update(agent.labels)
+        labels.setdefault("agent.port", labels.get("agent.port", "8000"))
+
+        expose_ports = agent.overrides.get("expose", [labels["agent.port"]])
+        port = str(expose_ports[0])
+
+        cmd = [
+            "docker",
+            "run",
+            "-d",
+            "--restart", "unless-stopped",
+            "--name", cname,
+            "--network", "agents-net",
+            "--env-file", str(env_file_path) if env_file_path.exists() else "/dev/null",
+        ]
+        # labels
+        for k, v in labels.items():
+            cmd.extend(["--label", f"{k}={v}"])
+        # env overrides
+        for k, v in agent.overrides.get("env", {}).items():
+            cmd.extend(["--env", f"{k}={v}"])
+        # port mapping (random host port)
+        cmd.extend(["-p", port])
+        # image
+        cmd.append(agent.image)
+
+        console.print(f"[cyan]Starting {cname} ({agent.image})…[/cyan]")
+        _run(cmd)
+
+
+
+def _read_env_file(path: pathlib.Path) -> dict:
+    """Read key=value lines from a .env file into a dict."""
+    result = {}
+    with path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            result[k] = v.strip().strip('"')
+    return result
 
 
 def _required_images() -> List[str]:

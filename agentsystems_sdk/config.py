@@ -44,15 +44,50 @@ class Registry:  # pragma: no cover – tiny helper class
 
 
 class Agent:
-    """Represents an agent container the operator wants to run."""
+    """Represents an agent container the operator wants to run.
 
-    def __init__(self, data: Dict):
+    Two declaration styles are supported:
+    1. Explicit *image* string (legacy):
+       ```yaml
+       - name: foo
+         image: docker.io/agentsystems/foo:latest
+       ```
+    2. Shorthand *repo* / *tag* with *registry* key pointing to `registries` entry:
+       ```yaml
+       - name: foo
+         registry: dockerhub
+         repo: agentsystems/foo
+         tag: latest  # optional, defaults to latest
+       ```
+    """
+
+    def __init__(self, data: Dict, registries: Dict[str, "Registry"]):
+        # ----- required keys ------------------------------------------------
         try:
             self.name: str = data["name"]
-            self.image: str = data["image"]
         except KeyError as exc:
             raise ValueError(f"Agent entry missing required key: {exc}") from None
-        self.registry: str | None = data.get("registry")  # optional – may be implicit
+
+        # ----- declaration variants ----------------------------------------
+        if "image" in data:
+            # Legacy / explicit image reference
+            self.image: str = data["image"]
+            self.registry: str | None = data.get("registry")
+        else:
+            # Shorthand form – need registry + repo, optional tag
+            try:
+                reg_key: str = data["registry"]
+                repo: str = data["repo"]
+            except KeyError as exc:
+                raise ValueError(f"Agent '{self.name}' must specify 'image' or ('registry' and 'repo')") from None
+            if reg_key not in registries:
+                raise ValueError(f"Agent '{self.name}' references unknown registry '{reg_key}'.")
+            reg_url = registries[reg_key].url.rstrip("/")
+            tag = data.get("tag", "latest")
+            self.image = f"{reg_url}/{repo}:{tag}"
+            self.registry = reg_key
+
+        # ----- optional keys -----------------------------------------------
         self.labels: Dict[str, str] = data.get("labels", {})
         self.overrides: Dict = data.get("overrides", {})
 
@@ -77,7 +112,7 @@ class Config:
 
         reg_dict = raw.get("registries", {})
         self.registries: Dict[str, Registry] = {name: Registry(name, data) for name, data in reg_dict.items()}
-        self.agents: List[Agent] = [Agent(a) for a in raw.get("agents", [])]
+        self.agents: List[Agent] = [Agent(a, self.registries) for a in raw.get("agents", [])]
 
         # Basic validation -------------------------------------------------
         if not self.registries:
