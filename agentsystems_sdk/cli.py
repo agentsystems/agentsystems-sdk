@@ -36,6 +36,154 @@ load_dotenv()
 import typer
 
 console = Console()
+
+# Detect Docker Compose CLI once at import time --------------------------------
+if shutil.which("docker-compose"):
+    _COMPOSE_BIN: list[str] = ["docker-compose"]
+else:
+    try:
+        subprocess.run(["docker", "compose", "version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+        _COMPOSE_BIN = ["docker", "compose"]
+    except Exception:
+        _COMPOSE_BIN = []
+
+
+# ---------------------------------------------------------------------------
+# Helper functions for running subprocesses with proper error handling
+# ---------------------------------------------------------------------------
+
+def _run(cmd: List[str]) -> None:
+    """Run *cmd* inheriting the current environment.
+
+    Exits the Typer application with the same exit code if the command fails.
+    """
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
+        raise typer.Exit(exc.returncode) from exc
+
+
+def _run_env(cmd: List[str], env: dict[str, str]) -> None:
+    """Run *cmd* with a custom *env* mapping and abort on failure."""
+    try:
+        subprocess.check_call(cmd, env=env)
+    except subprocess.CalledProcessError as exc:
+        typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
+        raise typer.Exit(exc.returncode) from exc
+# Additional helper utilities --------------------------------------------------
+
+def _ensure_docker_installed() -> None:
+    """Exit if Docker CLI is not found."""
+    if shutil.which("docker") is None:
+        typer.secho("Docker CLI not found. Please install Docker Desktop and retry.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+
+def _docker_login_if_needed(token: str | None) -> None:
+    """Login to Docker Hub using an isolated config dir when *token* is provided."""
+    if not token:
+        return
+    import tempfile
+    registry = "docker.io"
+    org = "agentsystems"
+    typer.echo("Logging into Docker Hub…")
+    with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmp_cfg:
+        env = os.environ.copy()
+        env["DOCKER_CONFIG"] = tmp_cfg
+        try:
+            subprocess.run(["docker", "login", registry, "-u", org, "--password-stdin"], input=f"{token}\n".encode(), check=True, env=env)
+        except subprocess.CalledProcessError as exc:
+            typer.secho("Docker login failed", fg=typer.colors.RED)
+            raise typer.Exit(exc.returncode) from exc
+
+
+def _ensure_agents_net() -> None:
+    """Create the shared Docker network 'agents-net' if absent."""
+    try:
+        subprocess.run(["docker", "network", "inspect", "agents-net"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    except subprocess.CalledProcessError:
+        subprocess.check_call(["docker", "network", "create", "agents-net"])
+
+# ---------------------------------------------------------------------------
+# Additional platform helper functions that were missing after refactor
+# ---------------------------------------------------------------------------
+
+def _cleanup_init_vars(env_path: pathlib.Path) -> None:
+    """Comment-out one-time LANGFUSE_INIT_* vars after first successful start."""
+    lines = env_path.read_text().splitlines()
+    init_lines: list[str] = []
+    other_lines: list[str] = []
+    for ln in lines:
+        stripped = ln.lstrip("# ")
+        if stripped.startswith("LANGFUSE_INIT_"):
+            key, _, val = stripped.partition("=")
+            init_lines.append(f"{key}={val}")
+        else:
+            other_lines.append(ln)
+    if init_lines:
+        notice = (
+            "# --- Langfuse initialization values (no longer used after first start) ---\n"
+            "# You can remove these lines or keep them for reference.\n"
+        )
+        commented = [f"# {l}" for l in init_lines]
+        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
+        env_path.write_text(new_content)
+
+
+def _compose_args(project_dir: pathlib.Path, no_langfuse: bool) -> tuple[pathlib.Path, list[str]]:
+    """Return (core compose file, -f arg list) honoring *no_langfuse*."""
+    core_candidates = [
+        project_dir / 'compose' / 'local' / 'docker-compose.yml',
+        project_dir / 'docker-compose.yml',
+        project_dir / 'docker-compose.yaml',
+    ]
+    core = next((p for p in core_candidates if p.exists()), None)
+    if core is None:
+        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    args: list[str] = ['-f', str(core)]
+    if not no_langfuse:
+        lf = project_dir / 'compose' / 'langfuse' / 'docker-compose.yml'
+        if lf.exists():
+            args.extend(['-f', str(lf)])
+    return core, args
+
+
+def _wait_for_gateway_ready(compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120) -> None:
+    """Tail logs until the gateway reports readiness or *timeout* seconds."""
+    if not _COMPOSE_BIN:
+        typer.secho("Docker Compose not found (plugin or standalone). Install it and retry.", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    cmd = [*_COMPOSE_BIN, "-f", str(compose_file), "logs", "--no-color", "-f", service]
+    ready_patterns = [
+        re.compile(r"Application startup complete", re.I),
+        re.compile(r"Uvicorn running", re.I),
+    ]
+    start = time.time()
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold cyan]Waiting for gateway…[/bold cyan]"), console=console, transient=True) as prog:
+        prog.add_task("wait", total=None)
+        try:
+            for line in proc.stdout:  # type: ignore[attr-defined]
+                if any(p.search(line) for p in ready_patterns):
+                    proc.terminate()
+                    break
+                if time.time() - start > timeout:
+                    console.print("[yellow]Gateway readiness timeout reached – continuing anyway.[/yellow]")
+                    proc.terminate()
+                    break
+        except Exception:
+            proc.terminate()
+        finally:
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+    console.print("[green]Gateway ready![/green]")
+
+# ---------------------------------------------------------------------------
+
 app = typer.Typer(help="AgentSystems command-line interface")
 
 
@@ -235,7 +383,6 @@ def up(
     wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="After start, wait until gateway is ready (detached mode only)"),
     no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
     env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
-    docker_token: str | None = typer.Option(None, '--docker-token', envvar='DOCKER_OAT', help="Docker Hub Org Access Token for private images"),
 ) -> None:
     """Start the full AgentSystems platform via docker compose.
 
@@ -244,8 +391,26 @@ def up(
     console.print(Panel.fit("🐳 [bold cyan]AgentSystems Platform – up[/bold cyan]", border_style="bright_cyan"))
 
     _ensure_docker_installed()
-    if docker_token:
-        _docker_login_if_needed(docker_token)
+
+    # --------------------------------------------------
+    # Use isolated Docker config for the entire session so global Docker login
+    # state never interferes with pulls/logins.
+    import tempfile
+    isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
+    env_base = os.environ.copy()
+    env_base["DOCKER_CONFIG"] = isolated_cfg.name
+
+    # Optional upfront login to docker.io so that docker compose can pull core
+    # images (control-plane, hello-world) before marketplace logic runs.
+    hub_user = os.getenv("DOCKERHUB_USER")
+    hub_token = os.getenv("DOCKERHUB_TOKEN")
+    if hub_user and hub_token:
+        console.print("[cyan]⇒ logging into docker.io (basic auth via DOCKERHUB_USER/DOCKERHUB_TOKEN) for compose pull[/cyan]")
+        try:
+            subprocess.run(["docker", "login", "docker.io", "-u", hub_user, "-p", hub_token], check=True, env=env_base)
+        except subprocess.CalledProcessError:
+            console.print("[red]Docker login failed – check DOCKERHUB_USER/DOCKERHUB_TOKEN.[/red]")
+            raise typer.Exit(code=1)
 
     # --------------------------------------------------
     # Load agentsystems-config.yml if present
@@ -265,6 +430,9 @@ def up(
         typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
+    # Detect compose CLI (plugin vs standalone)
+
+
     # Build compose arguments (core + optional Langfuse stack)
     core_compose, compose_args = _compose_args(project_dir, no_langfuse)
 
@@ -277,22 +445,25 @@ def up(
     with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
         if fresh:
             down_task = prog.add_task("Removing previous containers", total=None)
-            _run(["docker", "compose", *compose_args, "down", "-v"])
+            _run_env([*_COMPOSE_BIN, *compose_args, "down", "-v"], env_base)
             prog.update(down_task, completed=1)
 
-        up_cmd = ["docker", "compose", *compose_args, "up"]
+        up_cmd = [*_COMPOSE_BIN, *compose_args, "up"]
         if env_file:
             up_cmd.extend(["--env-file", str(env_file)])
         if detach:
             up_cmd.append("-d")
 
         prog.add_task("Starting services", total=None)
-        _run(up_cmd)
+        _run_env(up_cmd, env_base)
 
         # After successful startup, clean up init vars in the env file so they don't confuse users
         target_env_path = env_file if env_file else env_path
         if target_env_path.exists():
             _cleanup_init_vars(target_env_path)
+            # Ensure variables like DOCKERHUB_USER/TOKEN are available for
+            # _setup_agents_from_config which relies on os.getenv().
+            load_dotenv(dotenv_path=target_env_path, override=False)
 
     # --------------------------------------------------
     # If config specified agents, ensure registries are logged in & images pulled, then run containers
@@ -305,480 +476,61 @@ def up(
 
     console.print(Panel.fit("✅ [bold green]Platform is running![/bold green]", border_style="green"))
 
-
-@app.command()
-def down(
-    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes (docker compose down -v)"),
-    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
-    env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
-) -> None:
-    """Stop the AgentSystems platform containers and optionally remove volumes."""
-    console.print(Panel.fit("🛑 [bold cyan]AgentSystems Platform – down[/bold cyan]", border_style="bright_cyan"))
- 
-    project_dir = project_dir.expanduser()
-    if not project_dir.exists():
-        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
- 
-    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
- 
-    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold]{task.description}"), console=console) as prog:
-        task = prog.add_task("Stopping services", total=None)
-        down_cmd = ["docker", "compose", *compose_args, "down"]
-        if volumes:
-            _confirm_danger("remove Docker volumes")
-            down_cmd.append("-v")
-        if env_file:
-            down_cmd.extend(["--env-file", str(env_file)])
-        _run(down_cmd)
-        prog.update(task, completed=1)
-    console.print(Panel.fit("✅ [bold green]Platform stopped[/bold green]", border_style="green"))
-
-
-@app.command()
-def logs(
-    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    service: Optional[str] = typer.Option(None, '--service', '-s', help="Filter logs to a single service"),
-    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
-    tail: int = typer.Option(100, '--tail', help="Number of recent lines to show"),
-    since: Optional[str] = typer.Option(None, '--since', help="Show logs since timestamp or relative e.g. 10m"),
-    follow: bool = typer.Option(True, '--follow/--no-follow', help="Stream logs (default on)"),
-) -> None:
-    """Stream container logs (docker compose logs)."""
-    console.print(Panel.fit("📜 [bold cyan]AgentSystems Platform – logs[/bold cyan]", border_style="bright_cyan"))
-
-    project_dir = project_dir.expanduser()
-    if not project_dir.exists():
-        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    candidates = [
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-    ]
-    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
-    if compose_file is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
-    cmd = ["docker", "compose", *compose_args, "logs"]
-    if follow:
-        cmd.append("--follow")
-    if tail is not None:
-        cmd.extend(["--tail", str(tail)])
-    if since:
-        cmd.extend(["--since", since])
-    if service:
-        cmd.append(service)
-
-    _run(cmd)
-
-
-@app.command()
-def status(
-    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    service: Optional[str] = typer.Option(None, '--service', '-s', help="Show status for a single service"),
-    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
-) -> None:
-    """Show running containers and their state (docker compose ps)."""
-
-    console.print(Panel.fit("🩺 [bold cyan]AgentSystems Platform – status[/bold cyan]", border_style="bright_cyan"))
-
-    project_dir = project_dir.expanduser()
-    if not project_dir.exists():
-        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    candidates = [
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-    ]
-    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
-    if compose_file is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
-    cmd = ["docker", "compose", *compose_args, "ps"]
-    if service:
-        cmd.append(service)
-
-    _run(cmd)
-
-
-@app.command()
-def restart(
-    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    volumes: bool = typer.Option(False, '--volumes', '-v', help="Remove named volumes during restart"),
-    foreground: bool = typer.Option(False, '--foreground/--detach', help="Run in foreground (stream logs) or detach (default)"),
-    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse tracing stack"),
-    wait_ready: bool = typer.Option(True, '--wait/--no-wait', help="Wait until gateway is ready (detached mode only)"),
-    env_file: Optional[pathlib.Path] = typer.Option(None, '--env-file', help="Custom .env file passed to docker compose", exists=True, file_okay=True, dir_okay=False, resolve_path=True),
-) -> None:
-    """Restart the platform (down then up)."""
-    console.print(Panel.fit("🔄 [bold cyan]AgentSystems Platform – restart[/bold cyan]", border_style="bright_cyan"))
-
-    project_dir = project_dir.expanduser()
-    if not project_dir.exists():
-        typer.secho(f"Directory {project_dir} does not exist", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    candidates = [
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-    ]
-    compose_file: pathlib.Path | None = next((p for p in candidates if p.exists()), None)
-    if compose_file is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
-
-    # Ensure .env present unless --env-file supplied
-    env_path = project_dir / '.env'
-    if not env_path.exists() and env_file is None:
-        typer.secho("Missing .env file in project directory. Run `cp .env.example .env` and populate it before 'agentsystems restart'.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    # down
-    down_cmd = ["docker", "compose", *compose_args, "down"]
-    if volumes:
-        _confirm_danger("remove Docker volumes")
-        down_cmd.append("-v")
-    if env_file:
-        down_cmd.extend(["--env-file", str(env_file)])
-    _run(down_cmd)
-
-    # up
-    up_cmd = ["docker", "compose", *compose_args, "up"]
-    if not foreground:
-        up_cmd.append("-d")
-    if env_file:
-        up_cmd.extend(["--env-file", str(env_file)])
-    _run(up_cmd)
-
-    if not foreground and wait_ready:
-        _wait_for_gateway_ready(core_compose)
-
-    console.print(Panel.fit("✅ [bold green]Platform restarted[/bold green]", border_style="green"))
-
-
-@app.command()
-def info() -> None:
-    """Display environment and SDK diagnostic information."""
-    import platform, sys, shutil
-
-    console.print(Panel.fit("ℹ️  [bold cyan]AgentSystems SDK info[/bold cyan]", border_style="bright_cyan"))
-
-    rows = [
-        ("SDK version", _metadata.version("agentsystems-sdk")),
-        ("Python", sys.version.split()[0]),
-        ("Platform", platform.platform()),
-    ]
-    docker_path = shutil.which("docker")
-    if docker_path:
-        try:
-            docker_ver = subprocess.check_output(["docker", "--version"], text=True).strip()
-        except Exception:
-            docker_ver = "installed (version unknown)"
-    else:
-        docker_ver = "not found"
-    rows.append(("Docker", docker_ver))
-
-    table_lines = "\n".join(f"[bold]{k:12}[/bold] {v}" for k, v in rows)
-    console.print(table_lines)
-
-
-@app.command()
-def version() -> None:
-    """Display the installed SDK version."""
-    typer.echo(_metadata.version("agentsystems-sdk"))
-
-
-# ---------------------------------------------------------------------------
-# helpers
-
-def _configure_env(env_path: pathlib.Path) -> None:
-    """Interactively configure the .env file copied from .env.example."""
-    import re
-
-    console.print(Panel.fit("🔑 [bold cyan]Configure Langfuse environment[/bold cyan]", border_style="bright_cyan"))
-
-    # Organization
-    org_name = typer.prompt("Organization name", default="ExampleOrg")
-    org_id = re.sub(r"[^a-z0-9]+", "-", org_name.lower()).strip("-") or "org"
-
-    # Project defaults
-    project_id = "default"
-    project_name = "Default"
-
-    # User defaults and prompts
-    user_name = "Admin"
-
-    # Email prompt with validation
-    while True:
-        email = typer.prompt("Admin email")
-        if re.match(r"[^@]+@[^@]+\.[^@]+", email):
-            break
-        console.print("[red]Please enter a valid email address.[/red]")
-
-    # Password prompt with minimum length check
-    while True:
-        password = typer.prompt("Admin password (min 8 chars)", hide_input=True)
-        if len(password) >= 8:
-            break
-        console.print("[red]Password must be at least 8 characters.[/red]")
-
-    # Key generation (UUID4 to match pk/sk-lf-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-    pub_key = f"pk-lf-{uuid.uuid4()}"
-    secret_key = f"sk-lf-{uuid.uuid4()}"
-
-    # Helper to write without quotes
-    def _set(k: str, v: str) -> None:
-        # Write value wrapped in double quotes
-        set_key(str(env_path), k, f'"{v}"', quote_mode="never")
-
-    # Write values to .env (overwrite placeholders)
-    _set("LANGFUSE_INIT_ORG_ID", org_id)
-    _set("LANGFUSE_INIT_ORG_NAME", org_name)
-    _set("LANGFUSE_INIT_PROJECT_ID", project_id)
-    _set("LANGFUSE_INIT_PROJECT_NAME", project_name)
-    _set("LANGFUSE_INIT_USER_NAME", user_name)
-    _set("LANGFUSE_INIT_USER_EMAIL", email)
-    _set("LANGFUSE_INIT_USER_PASSWORD", password)
-    _set("LANGFUSE_INIT_PROJECT_PUBLIC_KEY", pub_key)
-    _set("LANGFUSE_PUBLIC_KEY", pub_key)
-    _set("LANGFUSE_INIT_PROJECT_SECRET_KEY", secret_key)
-    _set("LANGFUSE_SECRET_KEY", secret_key)
-
-    console.print("[green]✓ .env configured (init vars remain).[/green]")
-    return
-
-    # ------------------------------------------------------------------
-    # Re-format: keep runtime vars at top, move init vars (commented) to
-    # the bottom with a notice so the user can still reference them.
-    # ------------------------------------------------------------------
-    try:
-        lines = env_path.read_text().splitlines()
-    except Exception as exc:
-        console.print(f"[yellow]Could not reformat .env: {exc}[/yellow]")
-    else:
-        init_lines = []
-        other_lines = []
-        for ln in lines:
-            # strip leading comment when matching
-            stripped = ln.lstrip("# ")
-            if stripped.startswith("LANGFUSE_INIT_"):
-                # store original line (uncommented) for accuracy
-                key, _, val = stripped.partition("=")
-                init_lines.append(f"{key}={val}")
-            else:
-                other_lines.append(ln)
-
-        if init_lines:
-            notice = (
-                "# --- Langfuse initialization values (no longer used after first start) ---\n"
-                "# You can remove these lines or keep them for reference.\n"
-            )
-            commented_inits = [f"# {l}" for l in init_lines]
-            new_content = "\n".join(other_lines + ["", notice] + commented_inits) + "\n"
-            env_path.write_text(new_content)
-
-    console.print("[green]✓ .env configured.[/green]")
-
-
-def _cleanup_init_vars(env_path: pathlib.Path) -> None:
-    """Comment out LANGFUSE_INIT_* variables in the given .env file.
-    After first startup they are no longer required but useful for reference.
-    Keeps runtime vars at top, appends commented init vars to bottom with a notice."""
-    try:
-        lines = env_path.read_text().splitlines()
-    except Exception:
-        return
-
-    init_lines: list[str] = []
-    other_lines: list[str] = []
-    for ln in lines:
-        stripped = ln.lstrip("# ")
-        if stripped.startswith("LANGFUSE_INIT_"):
-            key, _, val = stripped.partition("=")
-            init_lines.append(f"{key}={val}")
-        else:
-            other_lines.append(ln)
-
-    if init_lines:
-        notice = (
-            "# --- Langfuse initialization values (no longer used after first start) ---\n"
-            "# You can remove these lines or keep them for reference.\n"
-        )
-        commented = [f"# {l}" for l in init_lines]
-        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
-        env_path.write_text(new_content)
-
-
-def _compose_args(project_dir: pathlib.Path, no_langfuse: bool) -> tuple[pathlib.Path, list[str]]:
-    """Return (core_compose_path, list_of_-f_args) respecting *no_langfuse*."""
-    # core compose – prefer explicit local file
-    core_candidates = [
-        project_dir / 'compose' / 'local' / 'docker-compose.yml',
-        project_dir / 'docker-compose.yml',
-        project_dir / 'docker-compose.yaml',
-    ]
-    core: pathlib.Path | None = next((p for p in core_candidates if p.exists()), None)
-    if core is None:
-        typer.secho("docker-compose.yml not found – pass the project directory (or run inside it)", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    args = ["-f", str(core)]
-
-    if not no_langfuse:
-        lf = project_dir / 'compose' / 'langfuse' / 'docker-compose.yml'
-        if lf.exists():
-            args.extend(["-f", str(lf)])
-    return core, args
-
-
-def _wait_for_gateway_ready(compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120) -> None:
-    """Show spinner while tailing logs until the gateway reports readiness."""
-    cmd = ["docker", "compose", "-f", str(compose_file), "logs", "--no-color", "-f", service]
-    ready_patterns = [
-        re.compile(r"Application startup complete", re.I),
-        re.compile(r"Uvicorn running", re.I),
-    ]
-
-    start = time.time()
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-
-    with Progress(SpinnerColumn(style="cyan"), TextColumn("[bold cyan]Waiting for gateway…[/bold cyan]"), console=console, transient=True) as prog:
-        task = prog.add_task("wait", total=None)
-        try:
-            for line in proc.stdout:  # type: ignore[attr-defined]
-                if any(p.search(line) for p in ready_patterns):
-                    proc.terminate()
-                    break
-                if time.time() - start > timeout:
-                    console.print("[yellow]Gateway readiness timeout reached – continuing anyway.[/yellow]")
-                    proc.terminate()
-                    break
-        except Exception:
-            proc.terminate()
-        finally:
-            try:
-                proc.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-
-    console.print("[green]Gateway ready![/green]")
-
-
-def _confirm_danger(action: str) -> None:
-    """Prompt the user to confirm a destructive *action* (like erasing volumes)."""
-    if not typer.confirm(f"⚠️  This will {action} and data may be lost. Continue?", default=False):
-        raise typer.Exit(code=1)
-
-# ---------------------------------------------------------------------------
-
-def _run(cmd: List[str]) -> None:
-    """Run *cmd* and stream output, aborting on non-zero exit."""
-    try:
-        subprocess.check_call(cmd)
-    except subprocess.CalledProcessError as exc:
-        typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
-        raise typer.Exit(exc.returncode) from exc
-
-
-def _ensure_agents_net() -> None:
-    """Ensure the shared bridge network exists (agents-net)."""
-    try:
-        docker.from_env().networks.get("agents-net")
-    except docker.errors.NotFound:
-        docker.from_env().networks.create("agents-net", driver="bridge")
-        console.print("[green]✓ Created Docker network 'agents-net'[/green]")
-
-
-def _ensure_docker_installed() -> None:
-    """Verify Docker CLI is available and ensure the shared network exists."""
-    if shutil.which("docker") is None:
-        typer.secho("Docker CLI not found. Please install Docker Desktop and retry.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-    _ensure_agents_net()
-
-
-def _docker_login_if_needed(token: str | None) -> None:
-    """Login to Docker Hub using an isolated config dir to sidestep credential helpers.
-
-    Some environments (notably macOS with Docker Desktop) configure a credential helper
-    that writes to the OS key-chain, which can fail in headless shells. We point
-    DOCKER_CONFIG at a throw-away directory so `docker login` keeps credentials in a
-    plain JSON file instead.
-    """
-    if not token:
-        return
-
-    import tempfile
-
-    registry = "docker.io"
-    org = "agentsystems"
-    typer.echo("Logging into Docker Hub…")
-    with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmp_cfg:
-        env = os.environ.copy()
-        env["DOCKER_CONFIG"] = tmp_cfg
-        try:
-            subprocess.run(
-                ["docker", "login", registry, "-u", org, "--password-stdin"],
-                input=f"{token}\n".encode(),
-                check=True,
-                env=env,
-            )
-        except subprocess.CalledProcessError as exc:
-            typer.secho("Docker login failed", fg=typer.colors.RED)
-            raise typer.Exit(exc.returncode) from exc
+    # Temporary Docker config directory is cleaned up when object is GC'd but
+    # we explicitly clean to avoid stray dirs
+    isolated_cfg.cleanup()
 
 
 # Marketplace helpers -------------------------------------------------------
 
 def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
-    """Ensure registry login, pull images, start agent containers using docker CLI.
+    """Login to each enabled registry in an isolated config & start agents.
 
-    Uses `--env-file` so secrets stay on disk and aren’t read into Python
-    process memory – mirroring the docker-compose env_file pattern users
-    are familiar with.
+    We always log in using credentials specified in `.env` / env-vars, never
+    relying on the user's global Docker credentials.  A temporary DOCKER_CONFIG
+    directory keeps this session separate so we don't clobber or depend on the
+    operator's normal login state.
     """
-    import tempfile
+    import tempfile, shlex
     client = docker.from_env()
     _ensure_agents_net()
 
-    # 1. Registry logins
+    # One temp Docker config dir reused for all logins & pulls
+    tmp_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
+    env_base = os.environ.copy()
+    env_base["DOCKER_CONFIG"] = tmp_cfg.name
+
+    # 1. Registry logins --------------------------------------------------
     for reg in cfg.enabled_registries():
         method = reg.login_method()
         if method == "none":
+            console.print(f"[cyan]ℹ︎ {reg.url}: no auth required[/cyan]")
             continue
+
         if method == "basic":
             user = os.getenv(reg.username_env() or "")
             pw = os.getenv(reg.password_env() or "")
             if not (user and pw):
-                console.print(f"[yellow]Skipping login to {reg.url} – missing creds.[/yellow]")
-                continue
-            _run(["docker", "login", reg.url, "-u", user, "-p", pw])
+                console.print(f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} in environment.[/red]")
+                raise typer.Exit(code=1)
+            console.print(f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]")
+            subprocess.run(["docker", "login", reg.url, "-u", user, "-p", pw], check=True, env=env_base)
+
         elif method in {"bearer", "token"}:
             token = os.getenv(reg.token_env() or "")
             if not token:
-                console.print(f"[yellow]Skipping login to {reg.url} – missing token.[/yellow]")
-                continue
-            with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmpcfg:
-                env = os.environ.copy()
-                env["DOCKER_CONFIG"] = tmpcfg
-                subprocess.run(["docker", "login", reg.url, "--username", "oauth2", "--password-stdin"], input=f"{token}\n".encode(), check=True, env=env)
+                console.print(f"[red]✗ {reg.url}: missing {reg.token_env()} in environment.[/red]")
+                raise typer.Exit(code=1)
+            console.print(f"[cyan]⇒ logging into {reg.url} (token via {reg.token_env()})[/cyan]")
+            subprocess.run(["docker", "login", reg.url, "--username", "oauth2", "--password-stdin"], input=f"{token}\n".encode(), check=True, env=env_base)
+        else:
+            console.print(f"[red]✗ {reg.url}: unknown auth method '{method}'.[/red]")
+            raise typer.Exit(code=1)
 
-    # 2. Pull images
+    # 2. Pull images ------------------------------------------------------
     for img in cfg.images():
-        console.print(f"[cyan]Pulling {img}…[/cyan]")
-        _run(["docker", "pull", img])
+        console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
+        subprocess.run(["docker", "pull", img], check=True, env=env_base)
 
     # 3. Start containers
     env_file_path = project_dir / ".env"
@@ -821,8 +573,8 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         # image
         cmd.append(agent.image)
 
-        console.print(f"[cyan]Starting {cname} ({agent.image})…[/cyan]")
-        _run(cmd)
+        console.print(f"[cyan]▶ starting {cname} ({agent.image})…[/cyan]")
+        subprocess.run(cmd, check=True, env=env_base)
 
 
 
