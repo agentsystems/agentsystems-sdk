@@ -601,6 +601,8 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         try:
             client.containers.get(cname)
             console.print(f"[green]✓ {cname} already running.[/green]")
+            if not _wait_for_agent_healthy(client, cname):
+                console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
             continue
         except docker.errors.NotFound:
             pass
@@ -635,7 +637,36 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
 
         console.print(f"[cyan]▶ starting {cname} ({agent.image})…[/cyan]")
         subprocess.run(cmd, check=True, env=env_base)
+        if _wait_for_agent_healthy(client, cname):
+            console.print(f"[green]✓ {cname} ready.[/green]")
+        else:
+            console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
 
+
+
+def _wait_for_agent_healthy(client: docker.DockerClient, name: str, timeout: int = 120) -> bool:
+    """Wait until container *name* reports healthy or has no HEALTHCHECK.
+
+    Returns True if healthy (or no healthcheck), False on timeout or missing.
+    """
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            cont = client.containers.get(name)
+            state = cont.attrs.get("State", {})
+            health = state.get("Health")
+            if not health:
+                return True  # no healthcheck defined → treat as healthy
+            status = health.get("Status")
+            if status == "healthy":
+                return True
+            if status == "unhealthy":
+                # keep waiting; could early-exit on consecutive unhealthy
+                pass
+        except docker.errors.NotFound:
+            return False
+        time.sleep(2)
+    return False
 
 
 def _read_env_file(path: pathlib.Path) -> dict:
