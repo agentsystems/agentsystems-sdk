@@ -407,7 +407,9 @@ def up(
     if hub_user and hub_token:
         console.print("[cyan]⇒ logging into docker.io (basic auth via DOCKERHUB_USER/DOCKERHUB_TOKEN) for compose pull[/cyan]")
         try:
-            subprocess.run(["docker", "login", "docker.io", "-u", hub_user, "-p", hub_token], check=True, env=env_base)
+            subprocess.run([
+                "docker", "login", "docker.io", "-u", hub_user, "--password-stdin"
+            ], input=f"{hub_token}\n".encode(), check=True, env=env_base)
         except subprocess.CalledProcessError:
             console.print("[red]Docker login failed – check DOCKERHUB_USER/DOCKERHUB_TOKEN.[/red]")
             raise typer.Exit(code=1)
@@ -514,7 +516,9 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
                 console.print(f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} in environment.[/red]")
                 raise typer.Exit(code=1)
             console.print(f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]")
-            subprocess.run(["docker", "login", reg.url, "-u", user, "-p", pw], check=True, env=env_base)
+            subprocess.run([
+                "docker", "login", reg.url, "-u", user, "--password-stdin"
+            ], input=f"{pw}\n".encode(), check=True, env=env_base)
 
         elif method in {"bearer", "token"}:
             token = os.getenv(reg.token_env() or "")
