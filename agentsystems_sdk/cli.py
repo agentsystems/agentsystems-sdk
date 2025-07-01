@@ -478,6 +478,13 @@ def up(
         _setup_agents_from_config(cfg, project_dir)
 
     # Wait for readiness
+    # Restart gateway so it picks up any newly started agents (routing table reload)
+    console.print("[cyan]↻ restarting gateway to reload agent routes…[/cyan]")
+    try:
+        _run_env([*_COMPOSE_BIN, *compose_args, "restart", "gateway"], env_base)
+    except Exception:
+        pass
+
     if detach and wait_ready:
         _wait_for_gateway_ready(core_compose)
 
@@ -577,7 +584,20 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         console.print("[yellow]No .env file found – agents will run without extra environment variables.[/yellow]")
 
     for agent in cfg.agents:
-        cname = f"agent-{agent.name}"
+        # Derive service/container name from image reference (basename without tag)
+        image_ref = agent.image
+        service_name = image_ref.rsplit("/", 1)[-1].split(":", 1)[0]
+        cname = service_name
+        # Remove legacy-named container if it exists (agent-<name>)
+        legacy_name = f"agent-{agent.name}"
+        if legacy_name != cname:
+            try:
+                legacy = client.containers.get(legacy_name)
+                console.print(f"[yellow]Removing legacy container {legacy_name}…[/yellow]")
+                legacy.remove(force=True)
+            except docker.errors.NotFound:
+                pass
+
         try:
             client.containers.get(cname)
             console.print(f"[green]✓ {cname} already running.[/green]")
@@ -585,7 +605,8 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         except docker.errors.NotFound:
             pass
 
-        labels = {"agent.enabled": "true"}
+        labels = {"agent.enabled": "true", "com.docker.compose.project": "local", "com.docker.compose.service": service_name}
+        # agent-specific labels override defaults
         labels.update(agent.labels)
         labels.setdefault("agent.port", labels.get("agent.port", "8000"))
 
