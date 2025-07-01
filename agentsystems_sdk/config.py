@@ -76,10 +76,10 @@ class Agent:
         else:
             # Shorthand form – need registry + repo, optional tag
             try:
-                reg_key: str = data["registry"]
+                reg_key: str = data["registry_connection"]
                 repo: str = data["repo"]
             except KeyError as exc:
-                raise ValueError(f"Agent '{self.name}' must specify 'image' or ('registry' and 'repo')") from None
+                raise ValueError(f"Agent '{self.name}' must specify 'image' or ('registry_connection' and 'repo')") from None
             if reg_key not in registries:
                 raise ValueError(f"Agent '{self.name}' references unknown registry '{reg_key}'.")
             reg_url = registries[reg_key].url.rstrip("/")
@@ -110,7 +110,9 @@ class Config:
         if self.version != 1:
             raise ValueError(f"Unsupported config_version {self.version}")
 
-        reg_dict = raw.get("registries", {})
+        if "registry_connections" not in raw:
+            raise ValueError("Config must declare 'registry_connections' at the top level.")
+        reg_dict = raw["registry_connections"]
         self.registries: Dict[str, Registry] = {name: Registry(name, data) for name, data in reg_dict.items()}
         self.agents: List[Agent] = [Agent(a, self.registries) for a in raw.get("agents", [])]
 
