@@ -660,5 +660,46 @@ def _required_images() -> List[str]:
     ]
 
 
+
+
+# ------------------------------------------------------------------
+# Additional convenience commands (restored)
+# ------------------------------------------------------------------
+
+@app.command()
+def down(
+    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+    volumes: bool = typer.Option(True, '--volumes/--no-volumes', '-v', help="Remove named volumes"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse stack"),
+) -> None:
+    """Stop the platform and remove containers (and optionally volumes)."""
+    _ensure_docker_installed()
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+    cmd = [*_COMPOSE_BIN, *compose_args, 'down']
+    if volumes:
+        cmd.append('-v')
+    console.print("[cyan]⏻ Stopping containers…[/cyan]")
+    _run_env(cmd, os.environ.copy())
+    console.print("[green]✓ Platform stopped.[/green]")
+
+
+@app.command()
+def logs(
+    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
+    follow: bool = typer.Option(True, '--follow/--no-follow', '-f', help="Follow log output"),
+    no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse stack"),
+    services: List[str] = typer.Argument(None, help="Optional list of services to show logs for"),
+) -> None:
+    """Stream (or dump) logs from docker compose services."""
+    _ensure_docker_installed()
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+    cmd = [*_COMPOSE_BIN, *compose_args, 'logs']
+    if follow:
+        cmd.append('-f')
+    if services:
+        cmd.extend(services)
+    _run_env(cmd, os.environ.copy())
+
+
 if __name__ == "__main__":  # pragma: no cover – executed only when run directly
     app()
