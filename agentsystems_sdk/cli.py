@@ -400,6 +400,11 @@ def up(
     env_base = os.environ.copy()
     env_base["DOCKER_CONFIG"] = isolated_cfg.name
 
+    # .env gets loaded later – keep env_base in sync so any newly loaded vars
+    # such as DOCKERHUB_USER/TOKEN are available to subprocesses.
+    def _sync_env_base() -> None:
+        env_base.update(os.environ)
+
     # Optional upfront login to docker.io so that docker compose can pull core
     # images (control-plane, hello-world) before marketplace logic runs.
     hub_user = os.getenv("DOCKERHUB_USER")
@@ -463,9 +468,9 @@ def up(
         target_env_path = env_file if env_file else env_path
         if target_env_path.exists():
             _cleanup_init_vars(target_env_path)
-            # Ensure variables like DOCKERHUB_USER/TOKEN are available for
-            # _setup_agents_from_config which relies on os.getenv().
+            # Ensure variables like DOCKERHUB_USER/TOKEN are available for CLI itself
             load_dotenv(dotenv_path=target_env_path, override=False)
+            _sync_env_base()
 
     # --------------------------------------------------
     # If config specified agents, ensure registries are logged in & images pulled, then run containers
@@ -513,12 +518,29 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
             user = os.getenv(reg.username_env() or "")
             pw = os.getenv(reg.password_env() or "")
             if not (user and pw):
-                console.print(f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} in environment.[/red]")
+                # If credentials missing, check whether all images from this registry are already present.
+                missing_images = [img for img in cfg.images() if img.startswith(reg.url) and subprocess.run([
+                    "docker", "image", "inspect", img
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env_base).returncode != 0]
+                if not missing_images:
+                    console.print(f"[yellow]⚠︎ Skipping login to {reg.url} – credentials missing but images already present.[/yellow]")
+                    continue
+                console.print(f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} in environment and images not cached.[/red]")
                 raise typer.Exit(code=1)
             console.print(f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]")
-            subprocess.run([
-                "docker", "login", reg.url, "-u", user, "--password-stdin"
-            ], input=f"{pw}\n".encode(), check=True, env=env_base)
+            try:
+                subprocess.run([
+                    "docker", "login", reg.url, "-u", user, "--password-stdin"
+                ], input=f"{pw}\n".encode(), check=True, env=env_base)
+            except subprocess.CalledProcessError:
+                # If login fails, attempt to proceed if images already cached.
+                missing_images = [img for img in cfg.images() if img.startswith(reg.url) and subprocess.run([
+                    "docker", "image", "inspect", img
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env_base).returncode != 0]
+                if not missing_images:
+                    console.print(f"[yellow]⚠︎ Login to {reg.url} failed, but images already present. Continuing…[/yellow]")
+                    continue
+                raise
 
         elif method in {"bearer", "token"}:
             token = os.getenv(reg.token_env() or "")
@@ -531,10 +553,23 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
             console.print(f"[red]✗ {reg.url}: unknown auth method '{method}'.[/red]")
             raise typer.Exit(code=1)
 
-    # 2. Pull images ------------------------------------------------------
+    # 2. Ensure images present (pull only if missing) ---------------------
     for img in cfg.images():
-        console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
-        subprocess.run(["docker", "pull", img], check=True, env=env_base)
+        def _image_exists(ref: str) -> bool:
+            return subprocess.run(
+                ["docker", "image", "inspect", ref],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=env_base,
+            ).returncode == 0
+
+        # Consider both fully-qualified and registry-less references
+        alt_ref = img.split("/", 1)[1] if "/" in img else img
+        if _image_exists(img) or _image_exists(alt_ref):
+            console.print(f"[green]✓ {img} already present.[/green]")
+        else:
+            console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
+            subprocess.run(["docker", "pull", img], check=True, env=env_base)
 
     # 3. Start containers
     env_file_path = project_dir / ".env"
@@ -597,9 +632,10 @@ def _read_env_file(path: pathlib.Path) -> dict:
 
 def _required_images() -> List[str]:
     # Central place to keep image list – update when the platform adds new components.
+    # Only core platform images; individual agent images are pulled during
+    # `agentsystems up` based on the deployment config.
     return [
         "agentsystems/agent-control-plane:latest",
-        "agentsystems/hello-world-agent:latest",
     ]
 
 
