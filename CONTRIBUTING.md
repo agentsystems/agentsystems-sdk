@@ -118,6 +118,21 @@ Environment requirements:
 ---
 ## 5. Updating documentation
 
+---
+
+## 6. Roadmap
+
+| Timeline | Item |
+|----------|------|
+| short-term | **Port-probe startup fallback** – CLI attempts a TCP connect to the agent port when no Docker HEALTHCHECK is present. |
+| short-term | **CI end-to-end tests** – pytest workflow that runs `agentsystems up`, waits for readiness, then verifies `/agents` and a sample agent response. |
+| short-term | **Config schema versioning** – add a `version:` field to `agentsystems-config.yml` and warn when mismatched. |
+| short-term | **Secrets helper** – `agentsystems secrets set NAME=value` for safe, masked updates to `.env`. |
+| mid-term   | **Marketplace catalog endpoint** – lightweight HTTP endpoint that lists containers available via each `registry_connection`, served as cards/links. |
+| research   | **Scale-to-zero/on-demand agents** – design auto-start & idle shutdown for heavy models. |
+
+
+
 * **README.md** – user-centric CLI docs (update options, examples, etc.).
 * **CONTRIBUTING.md** – this file.
 * Feel free to include asciinema gifs or screenshots of the Rich UI, but keep them lightweight.
