@@ -20,7 +20,7 @@ import subprocess
 import sys
 import time
 import itertools
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 from agentsystems_sdk.config import Config  # new
 
@@ -509,74 +509,88 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
     client = docker.from_env()
     _ensure_agents_net()
 
-    # One temp Docker config dir reused for all logins & pulls
-    tmp_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
+    # --- Pull images per registry using isolated DOCKER_CONFIG dirs ------
+    # Build mapping of registry key -> list[Agent]
+    from collections import defaultdict
+    agents_by_reg: Dict[str, List] = defaultdict(list)
+    for agent in cfg.agents:
+        agents_by_reg[agent.registry].append(agent)
+
+    def _image_exists(ref: str, env: dict) -> bool:  # type: ignore[arg-type]
+        """Return True if *ref* image is already present (using given env)."""
+        return subprocess.run(
+            ["docker", "image", "inspect", ref],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env=env,
+        ).returncode == 0
+
+    for reg_key, agents_list in agents_by_reg.items():
+        reg = cfg.registries.get(reg_key)
+        if not reg or not reg.enabled:
+            continue  # skip disabled registries
+
+        # Create a fresh Docker config dir so credentials don't clobber
+        with tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-") as tmp_cfg:
+            env = os.environ.copy()
+            env["DOCKER_CONFIG"] = tmp_cfg
+
+            # ---- Login --------------------------------------------------
+            method = reg.login_method()
+            if method == "none":
+                console.print(f"[cyan]ℹ︎ {reg.url}: no auth required[/cyan]")
+            elif method == "basic":
+                user = os.getenv(reg.username_env() or "")
+                pw = os.getenv(reg.password_env() or "")
+                if not (user and pw):
+                    not_present = [a.image for a in agents_list if not _image_exists(a.image, env)]
+                    if not not_present:
+                        console.print(
+                            f"[yellow]⚠︎ Skipping login to {reg.url} – credentials missing but images already cached.[/yellow]"
+                        )
+                    else:
+                        console.print(
+                            f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} and images not cached.[/red]"
+                        )
+                        raise typer.Exit(code=1)
+                else:
+                    console.print(
+                        f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]"
+                    )
+                    subprocess.run(
+                        ["docker", "login", reg.url, "-u", user, "--password-stdin"],
+                        input=f"{pw}\n".encode(),
+                        check=True,
+                        env=env,
+                    )
+            elif method in {"bearer", "token"}:
+                token = os.getenv(reg.token_env() or "")
+                if not token:
+                    console.print(f"[red]✗ {reg.url}: missing {reg.token_env()} in environment.[/red]")
+                    raise typer.Exit(code=1)
+                console.print(f"[cyan]⇒ logging into {reg.url} (token via {reg.token_env()})[/cyan]")
+                subprocess.run(
+                    ["docker", "login", reg.url, "--username", "oauth2", "--password-stdin"],
+                    input=f"{token}\n".encode(),
+                    check=True,
+                    env=env,
+                )
+            else:
+                console.print(f"[red]✗ {reg.url}: unknown auth method '{method}'.[/red]")
+                raise typer.Exit(code=1)
+
+            # ---- Pull images -------------------------------------------
+            for agent in agents_list:
+                img = agent.image
+                alt_ref = img.split("/", 1)[1] if "/" in img else img
+                if _image_exists(img, env) or _image_exists(alt_ref, env):
+                    console.print(f"[green]✓ {img} already present.[/green]")
+                    continue
+                console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
+                subprocess.run(["docker", "pull", img], check=True, env=env)
+
+    # Reset env_base for container startup (credentials no longer needed)
     env_base = os.environ.copy()
-    env_base["DOCKER_CONFIG"] = tmp_cfg.name
-
-    # 1. Registry logins --------------------------------------------------
-    for reg in cfg.enabled_registries():
-        method = reg.login_method()
-        if method == "none":
-            console.print(f"[cyan]ℹ︎ {reg.url}: no auth required[/cyan]")
-            continue
-
-        if method == "basic":
-            user = os.getenv(reg.username_env() or "")
-            pw = os.getenv(reg.password_env() or "")
-            if not (user and pw):
-                # If credentials missing, check whether all images from this registry are already present.
-                missing_images = [img for img in cfg.images() if img.startswith(reg.url) and subprocess.run([
-                    "docker", "image", "inspect", img
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env_base).returncode != 0]
-                if not missing_images:
-                    console.print(f"[yellow]⚠︎ Skipping login to {reg.url} – credentials missing but images already present.[/yellow]")
-                    continue
-                console.print(f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} in environment and images not cached.[/red]")
-                raise typer.Exit(code=1)
-            console.print(f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]")
-            try:
-                subprocess.run([
-                    "docker", "login", reg.url, "-u", user, "--password-stdin"
-                ], input=f"{pw}\n".encode(), check=True, env=env_base)
-            except subprocess.CalledProcessError:
-                # If login fails, attempt to proceed if images already cached.
-                missing_images = [img for img in cfg.images() if img.startswith(reg.url) and subprocess.run([
-                    "docker", "image", "inspect", img
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=env_base).returncode != 0]
-                if not missing_images:
-                    console.print(f"[yellow]⚠︎ Login to {reg.url} failed, but images already present. Continuing…[/yellow]")
-                    continue
-                raise
-
-        elif method in {"bearer", "token"}:
-            token = os.getenv(reg.token_env() or "")
-            if not token:
-                console.print(f"[red]✗ {reg.url}: missing {reg.token_env()} in environment.[/red]")
-                raise typer.Exit(code=1)
-            console.print(f"[cyan]⇒ logging into {reg.url} (token via {reg.token_env()})[/cyan]")
-            subprocess.run(["docker", "login", reg.url, "--username", "oauth2", "--password-stdin"], input=f"{token}\n".encode(), check=True, env=env_base)
-        else:
-            console.print(f"[red]✗ {reg.url}: unknown auth method '{method}'.[/red]")
-            raise typer.Exit(code=1)
-
-    # 2. Ensure images present (pull only if missing) ---------------------
-    for img in cfg.images():
-        def _image_exists(ref: str) -> bool:
-            return subprocess.run(
-                ["docker", "image", "inspect", ref],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=env_base,
-            ).returncode == 0
-
-        # Consider both fully-qualified and registry-less references
-        alt_ref = img.split("/", 1)[1] if "/" in img else img
-        if _image_exists(img) or _image_exists(alt_ref):
-            console.print(f"[green]✓ {img} already present.[/green]")
-        else:
-            console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
-            subprocess.run(["docker", "pull", img], check=True, env=env_base)
 
     # 3. Start containers
     env_file_path = project_dir / ".env"
