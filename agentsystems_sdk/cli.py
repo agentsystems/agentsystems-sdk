@@ -313,7 +313,8 @@ def init(
                 env_file = env_file if env_file.exists() else env_example
 
             from dotenv import set_key as _sk
-            for k, v in {
+
+            cfg_pairs = {
                 "LANGFUSE_INIT_ORG_ID": org_id,
                 "LANGFUSE_INIT_ORG_NAME": org_name,
                 "LANGFUSE_INIT_PROJECT_ID": project_id,
@@ -323,10 +324,16 @@ def init(
                 "LANGFUSE_INIT_USER_PASSWORD": password,
                 "LANGFUSE_INIT_PROJECT_PUBLIC_KEY": pub_key,
                 "LANGFUSE_INIT_PROJECT_SECRET_KEY": secret_key,
+                # Runtime vars (must be *unquoted* for Docker)
+                "LANGFUSE_HOST": "http://langfuse-web:3000",
                 "LANGFUSE_PUBLIC_KEY": pub_key,
                 "LANGFUSE_SECRET_KEY": secret_key,
-            }.items():
-                _sk(str(env_file), k, f'"{v}"', quote_mode="never")
+            }
+
+            for k, v in cfg_pairs.items():
+                # Quote only the one-shot INIT vars; runtime vars stay raw
+                value_to_write = f'"{v}"' if k.startswith("LANGFUSE_INIT_") else str(v)
+                _sk(str(env_file), k, value_to_write, quote_mode="never")
             console.print("[green]✓ .env configured.[/green]")
 
         progress.add_task("Checking Docker", total=None)
