@@ -714,25 +714,73 @@ def _required_images() -> List[str]:
 
 
 
-# ------------------------------------------------------------------
 # Additional convenience commands (restored)
 # ------------------------------------------------------------------
 
 @app.command()
 def down(
-    project_dir: pathlib.Path = typer.Argument('.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True, help="Path to an agent-platform-deployments checkout"),
-    volumes: bool = typer.Option(True, '--volumes/--no-volumes', '-v', help="Remove named volumes"),
+    project_dir: pathlib.Path = typer.Argument(
+        '.', exists=True, file_okay=False, dir_okay=True, readable=True, resolve_path=True,
+        help="Path to an agent-platform-deployments checkout",
+    ),
+    delete_volumes: bool = typer.Option(
+        False, '--delete-volumes', '-v', help="Also remove named volumes (data will be lost)",
+    ),
+    delete_containers: bool = typer.Option(
+        False, '--delete-containers', help="Remove standalone agent containers (label agent.enabled=true)",
+    ),
+    delete_all: bool = typer.Option(
+        False, '--delete-all', help="Remove volumes and agent containers in addition to the core stack",
+    ),
+    # Legacy flag (hidden) – maps to --delete-volumes for back-compat
+    volumes: Optional[bool] = typer.Option(
+        None, '--volumes/--no-volumes', help="[DEPRECATED] Use --delete-volumes instead", hidden=True,
+    ),
     no_langfuse: bool = typer.Option(False, '--no-langfuse', help="Disable Langfuse stack"),
 ) -> None:
-    """Stop the platform and remove containers (and optionally volumes)."""
+    """Stop the platform.
+
+    By default this stops and removes the docker-compose services but **retains**
+    their named volumes, so database/object-store data are preserved.
+
+    Use additional flags to purge data or standalone agent containers:
+      --delete-volumes      remove named volumes (data loss)
+      --delete-containers   remove agent containers created with `docker run`
+      --delete-all          convenience flag = both of the above
+    """
     _ensure_docker_installed()
+
+    # Map deprecated flag
+    if volumes is not None:
+        if volumes:
+            delete_volumes = True
+        typer.secho("[DEPRECATED] --volumes/--no-volumes is deprecated; use --delete-volumes", fg=typer.colors.YELLOW)
+
+    # Promote --delete-all
+    if delete_all:
+        delete_volumes = True
+        delete_containers = True
+
+    # Stop compose services -------------------------------------------------
     core_compose, compose_args = _compose_args(project_dir, no_langfuse)
-    cmd = [*_COMPOSE_BIN, *compose_args, 'down']
-    if volumes:
+    cmd: list[str] = [*_COMPOSE_BIN, *compose_args, 'down']
+    if delete_volumes:
         cmd.append('-v')
-    console.print("[cyan]⏻ Stopping containers…[/cyan]")
+    console.print("[cyan]⏻ Stopping core services…[/cyan]")
     _run_env(cmd, os.environ.copy())
-    console.print("[green]✓ Platform stopped.[/green]")
+
+    # Remove agent containers if requested ----------------------------------
+    if delete_containers:
+        client = docker.from_env()
+        for c in client.containers.list(filters={"label": "agent.enabled=true"}):
+            console.print(f"[cyan]⏻ Removing agent container {c.name}…[/cyan]")
+            try:
+                c.remove(force=True)
+            except Exception as exc:  # pragma: no cover – runtime safety
+                console.print(f"[red]Failed to remove {c.name}: {exc}[/red]")
+
+    console.print("[green]✓ Platform stopped." + (" Volumes deleted." if delete_volumes else "") + (
+        " Agent containers removed." if delete_containers else "") + "[/green]")
 
 
 @app.command()
