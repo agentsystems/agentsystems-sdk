@@ -5,6 +5,15 @@ Thanks for helping make the AgentSystems SDK awesome! This guide covers local de
 ---
 ## 1. Local development environment
 
+### Quick dev environment setup
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pre-commit install
+pre-commit run --all-files
+```
+
 ### Prerequisites
 
 * **Python ≥ 3.11** (matching the runtime in `pyproject.toml`)
