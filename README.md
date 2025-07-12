@@ -141,7 +141,7 @@ Docker Hub token *must* include the "Read public repositories" permission so pul
 | `GITHUB_TOKEN` | GitHub Personal Access Token with **repo:read** scope |
 | `DOCKER_OAT`   | Docker Hub Org Access Token for `agentsystems` org |
 
-The `.env` file is generated automatically by `agentsystems init`. It contains both runtime vars and a temporary set of `LANGFUSE_INIT_*` variables used on the very first startup. On the first successful `agentsystems up` these init variables are commented out and moved to the bottom of the file so they don’t confuse future edits.  
+The `.env` file is generated automatically by `agentsystems init`. It contains both runtime vars and a temporary set of `LANGFUSE_INIT_*` variables used on the very first startup. On the first successful `agentsystems up` these init variables are commented out and moved to the bottom of the file so they don’t confuse future edits.
 You can still keep them for reference or delete them entirely.
 
 > Note: `LANGFUSE_HOST`, `LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` are written *without* quotes so they are passed correctly into Docker containers. If you edit `.env` manually, ensure these three remain unquoted.
@@ -173,4 +173,3 @@ pipx reinstall --editable .
 
 Open an issue or discussion in the private GitHub repository.
 Contributions welcome—see [CONTRIBUTING.md](CONTRIBUTING.md).
-

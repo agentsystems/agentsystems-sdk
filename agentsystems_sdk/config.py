@@ -5,9 +5,9 @@ validate the fields we currently rely on in the SDK.  The schema can
 evolve and remain back-compatible by bumping the `config_version` field
 and adding new optional keys.
 """
+
 from __future__ import annotations
 
-import os
 import pathlib
 from typing import Dict, List
 
@@ -78,10 +78,14 @@ class Agent:
             try:
                 reg_key: str = data["registry_connection"]
                 repo: str = data["repo"]
-            except KeyError as exc:
-                raise ValueError(f"Agent '{self.name}' must specify 'image' or ('registry_connection' and 'repo')") from None
+            except KeyError:
+                raise ValueError(
+                    f"Agent '{self.name}' must specify 'image' or ('registry_connection' and 'repo')"
+                ) from None
             if reg_key not in registries:
-                raise ValueError(f"Agent '{self.name}' references unknown registry '{reg_key}'.")
+                raise ValueError(
+                    f"Agent '{self.name}' references unknown registry '{reg_key}'."
+                )
             reg_url = registries[reg_key].url.rstrip("/")
             tag = data.get("tag", "latest")
             self.image = f"{reg_url}/{repo}:{tag}"
@@ -111,14 +115,22 @@ class Config:
             raise ValueError(f"Unsupported config_version {self.version}")
 
         if "registry_connections" not in raw:
-            raise ValueError("Config must declare 'registry_connections' at the top level.")
+            raise ValueError(
+                "Config must declare 'registry_connections' at the top level."
+            )
         reg_dict = raw["registry_connections"]
-        self.registries: Dict[str, Registry] = {name: Registry(name, data) for name, data in reg_dict.items()}
-        self.agents: List[Agent] = [Agent(a, self.registries) for a in raw.get("agents", [])]
+        self.registries: Dict[str, Registry] = {
+            name: Registry(name, data) for name, data in reg_dict.items()
+        }
+        self.agents: List[Agent] = [
+            Agent(a, self.registries) for a in raw.get("agents", [])
+        ]
 
         # Basic validation -------------------------------------------------
         if not self.registries:
-            raise ValueError("Config must declare at least one registry under 'registries'.")
+            raise ValueError(
+                "Config must declare at least one registry under 'registries'."
+            )
         if not self.agents:
             raise ValueError("Config must declare at least one agent under 'agents'.")
 
