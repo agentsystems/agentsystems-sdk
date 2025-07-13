@@ -53,7 +53,7 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | `agentsystems down [PROJECT_DIR]` | Stop containers. Volumes are preserved by default; add `--delete-volumes` (or `--delete-all`) to wipe data. |
 | `agentsystems logs [PROJECT_DIR]` | Stream or view recent logs (`docker compose logs`). |
 | `agentsystems status [PROJECT_DIR]` | List running containers and state (`docker compose ps`). |
-| `agentsystems restart [PROJECT_DIR]` | Quick bounce (`down` → `up`). **Waits for readiness by default**. Add `--delete-volumes` or `--delete-all` to wipe data, or `--no-wait` to skip. **Requires `.env`**. |
+| `agentsystems restart [PROJECT_DIR]` | Quick bounce (`down` → `up`). **Waits for readiness by default**. Pass `--no-wait` to skip. **Requires `.env`**. |
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
 
