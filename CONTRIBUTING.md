@@ -91,32 +91,46 @@ The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--p
 * Update `NOTICE` when adding new runtime dependencies (license + copyright).
 
 ---
-## 4. Release workflow
+## 4. Release workflow (branch-based)
 
-All releases are driven by the shell script `./scripts/release.sh` which enforces version safety and PyPI hygiene.
+Releases are driven by `./scripts/release.sh`.  The script now **requires** a dedicated `release/<version>` branch and creates the Git tag (`v<version>`) automatically.  Flow:
 
-1. **Bump version** inside `pyproject.toml` (`<major>.<minor>.<patch>`).
-2. **Dry-run** everything locally:
-
-   ```bash
-   ./scripts/release.sh --version X.Y.Z --dry-run
-   ```
-
-3. **Publish to TestPyPI** (creates/ re-uses git tag):
+1. **Create a release branch** and bump version:
 
    ```bash
-   ./scripts/release.sh --version X.Y.Z --test
-   pipx install --index-url https://test.pypi.org/simple/ agentsystems-sdk==X.Y.Z
+   git checkout -b release/0.2.19
+   # edit pyproject.toml -> version = "0.2.19"
+   git commit -am "chore: bump version to 0.2.19"
    ```
 
-4. Verify install & basic commands.
-5. When satisfied, **promote the same tag to production PyPI**:
+2. **Dry-run locally** (sanity check, no push):
 
    ```bash
-   ./scripts/release.sh --version X.Y.Z --prod
+   ./scripts/release.sh --version 0.2.19 --dry-run
    ```
 
-   The script will refuse to run if the working tree is dirty, if the tag doesn’t match `HEAD`, or if the version already exists on PyPI.
+3. **Publish to TestPyPI**:
+
+   ```bash
+   ./scripts/release.sh --version 0.2.19 --test
+   # verify
+   pipx install --index-url https://test.pypi.org/simple/ agentsystems-sdk==0.2.19
+   agentsystems --version
+   ```
+
+4. Open a **PR from `release/0.2.19` → `main`**.  CI will build & install the wheel and run smoke tests.
+5. After review & green CI, **merge the PR**.  The merge keeps the tag intact; the branch can be deleted.
+6. **Promote to production PyPI** from the same branch/tag:
+
+   ```bash
+   ./scripts/release.sh --version 0.2.19 --prod
+   ```
+
+The script aborts if:
+* Working tree is dirty.
+* Version in `pyproject.toml` doesn’t match `--version`.
+* Git tag `v<version>` already exists.
+* Version already exists on the target index.
 
 Environment requirements:
 

@@ -29,6 +29,19 @@ pipx install --editable .        # live-reloads on file changes
 ```
 
 ---
+## Continuous Integration (GitHub Actions)
+
+Every push and pull request runs `ci.yml` which now goes beyond linting:
+
+1. Installs dev dependencies & runs pre-commit hooks (ruff, black, shellcheck, hadolint).
+2. Builds the wheel (`python -m build`).
+3. Installs the built wheel into a fresh venv.
+4. Runs smoke tests (`agentsystems --version`, `agentsystems info`).
+
+A failing build or test blocks the merge, ensuring every released version installs cleanly.
+
+---
+
 ## CLI commands
 
 All commands are available through `agentsystems` (or the shorter alias `agntsys`).
