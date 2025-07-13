@@ -179,7 +179,19 @@ if [[ "$PUBLISH" == true ]]; then
   fi
 fi
 
-# -------- commit & tag ------------------------------------------------------
+# -------- release branch, commit & tag ------------------------------------------------------
+# Create/push a dedicated release branch (release/<version>) so that the tag and
+# any hot-fix commits live outside main.
+RELEASE_BRANCH="release/$VERSION"
+if [[ "$DRY_RUN" == false ]]; then
+  # Create branch locally if it does not yet exist
+  if ! git rev-parse --verify "$RELEASE_BRANCH" &>/dev/null; then
+    git branch "$RELEASE_BRANCH"
+  fi
+  # Push branch and set upstream
+  git push -u origin "$RELEASE_BRANCH"
+fi
+
 if [[ "$CREATE_GIT_TAG" == true && "$DRY_RUN" == false ]]; then
   git tag -a "$GIT_TAG" -m "Release $GIT_TAG"
   git push origin "$GIT_TAG"
