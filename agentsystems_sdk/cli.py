@@ -1026,5 +1026,84 @@ def logs(
     _run_env(cmd, os.environ.copy())
 
 
+# ------------------------------------------------------------------
+# restart & status commands (re-added after refactor)
+# ------------------------------------------------------------------
+
+
+@app.command()
+def restart(
+    project_dir: pathlib.Path = typer.Argument(
+        ".",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Path to an agent-platform-deployments checkout",
+    ),
+    detach: bool = typer.Option(
+        True,
+        "--detach/--foreground",
+        "-d",
+        help="Run containers in background (default) or stream logs in foreground",
+    ),
+    wait_ready: bool = typer.Option(
+        True,
+        "--wait/--no-wait",
+        help="After start, wait until gateway is ready (detached mode only)",
+    ),
+    no_langfuse: bool = typer.Option(
+        False, "--no-langfuse", help="Disable Langfuse tracing stack"
+    ),
+):
+    """Quick bounce: `down` → `up` (non-destructive).
+
+    Retains data volumes; wipe with `down --delete-volumes` first.
+    Useful during development and CI.
+    """
+    _ensure_docker_installed()
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+
+    # Stop current stack ----------------------------------------------------
+    cmd_down: list[str] = [*_COMPOSE_BIN, *compose_args, "down"]
+    console.print("[cyan]⏻ Stopping core services…[/cyan]")
+    _run_env(cmd_down, os.environ.copy())
+
+    # Start stack again ------------------------------------------------------
+    cmd_up: list[str] = [*_COMPOSE_BIN, *compose_args, "up"]
+    if detach:
+        cmd_up.append("-d")
+    console.print("[cyan]⏫ Starting core services…[/cyan]")
+    _run_env(cmd_up, os.environ.copy())
+
+    # Optional readiness wait -----------------------------------------------
+    if wait_ready and detach:
+        _wait_for_gateway_ready(core_compose)
+    console.print("[green]✓ Restart complete.[/green]")
+
+
+@app.command()
+def status(
+    project_dir: pathlib.Path = typer.Argument(
+        ".",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Path to an agent-platform-deployments checkout",
+    ),
+    no_langfuse: bool = typer.Option(
+        False, "--no-langfuse", help="Disable Langfuse stack"
+    ),
+):
+    """List running containers and their state (`docker compose ps`)."""
+    _ensure_docker_installed()
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+    cmd = [*_COMPOSE_BIN, *compose_args, "ps"]
+    _run_env(cmd, os.environ.copy())
+
+
 if __name__ == "__main__":  # pragma: no cover – executed only when run directly
     app()
