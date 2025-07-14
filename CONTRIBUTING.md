@@ -122,9 +122,29 @@ Releases are driven by `./scripts/release.sh`.  The script now **requires** a de
 5. After review & green CI, **merge the PR**.  The merge keeps the tag intact; the branch can be deleted.
 6. **Promote to production PyPI** from the same branch/tag:
 
-   ```bash
-   ./scripts/release.sh --version 0.2.19 --prod
-   ```
+```bash
+./scripts/release.sh --version 0.2.19 --prod
+```
+
+7. **Post-release cleanup & sync your local `main`** (optional but recommended):
+
+```bash
+# fast-forward local main to the published tag
+git checkout main
+git pull origin main
+
+# fetch tags if they didn’t come down automatically
+git fetch --tags
+
+# delete the release branch – it has served its purpose
+git branch -d release/0.2.19
+git push origin --delete release/0.2.19
+
+# start the next development cycle (example)
+# edit pyproject.toml → version = "0.2.20.dev0"
+git commit -am "chore: start 0.2.20.dev0"
+git push
+```
 
 The script aborts if:
 * Working tree is dirty.
