@@ -9,3 +9,6 @@ dist/
 # Python cache files
 __pycache__/
 *.py[cod]
+
+# Test coverage artifact
+.coverage
