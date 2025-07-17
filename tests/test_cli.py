@@ -133,5 +133,5 @@ def test_status_command_no_docker(tmp_path, monkeypatch):
 
 def test_app_invocation_no_args():
     result = runner.invoke(app, [])
-    # No options provided: callback does nothing but exit 0
-    assert result.exit_code == 0
+    # Typer exits with code 2 when no command/options are supplied.
+    assert result.exit_code == 2
