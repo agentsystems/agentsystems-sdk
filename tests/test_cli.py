@@ -12,7 +12,12 @@ from agentsystems_sdk.cli import (
     _compose_args,
     _read_env_file,
     _cleanup_init_vars,
+    _ensure_docker_installed,
 )
+
+import pytest
+import shutil
+import typer
 
 runner = CliRunner()
 
@@ -98,3 +103,21 @@ REGULAR_KEY=value
     assert "Langfuse initialization values" in text
     # regular key remains uncommented
     assert "REGULAR_KEY=value" in text
+
+
+# ---------------------------------------------------------------------------
+# Negative-path tests hitting CLI helper exits
+# ---------------------------------------------------------------------------
+
+
+def test_compose_args_missing(tmp_path):
+    """_compose_args should exit when no compose file is present."""
+    with pytest.raises(typer.Exit):
+        _compose_args(tmp_path, no_langfuse=True)
+
+
+def test_ensure_docker_installed_exit(monkeypatch):
+    """_ensure_docker_installed exits if docker CLI is missing."""
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    with pytest.raises(typer.Exit):
+        _ensure_docker_installed()
