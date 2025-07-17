@@ -1,5 +1,7 @@
 # AgentSystems SDK & CLI
 
+[![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/graph/badge.svg?token=A6KFU4Y3HP)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
+
 The AgentSystems **SDK** is a single-install Python package that provides several components:
 
 * `agentsystems` — a polished command-line interface for bootstrapping and operating an AgentSystems deployment.
