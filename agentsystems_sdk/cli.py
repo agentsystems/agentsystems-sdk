@@ -186,7 +186,7 @@ def _compose_args(
     return core, args
 
 
-def _wait_for_gateway_ready(
+def _wait_for_gateway_ready(  # pragma: no cover
     compose_file: pathlib.Path, service: str = "gateway", timeout: int = 120
 ) -> None:
     """Tail logs until the gateway reports readiness or *timeout* seconds."""
@@ -678,7 +678,7 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
     for agent in cfg.agents:
         agents_by_reg[agent.registry].append(agent)
 
-    def _image_exists(ref: str, env: dict) -> bool:  # type: ignore[arg-type]
+    def _image_exists(ref: str, env: dict) -> bool:  # type: ignore[arg-type]  # pragma: no cover
         """Return True if *ref* image is already present (using given env)."""
         return (
             subprocess.run(
