@@ -1105,5 +1105,44 @@ def status(
     _run_env(cmd, os.environ.copy())
 
 
+# ------------------------------------------------------------------
+# clean command (new)
+# ------------------------------------------------------------------
+
+
+@app.command()
+def clean(
+    project_dir: pathlib.Path = typer.Argument(
+        ".",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        readable=True,
+        resolve_path=True,
+        help="Path to an agent-platform-deployments checkout",
+    ),
+    prune_system: bool = typer.Option(
+        True,
+        "--prune-system/--no-prune-system",
+        help="Also run 'docker system prune -f' to clear dangling images and networks",
+    ),
+    no_langfuse: bool = typer.Option(
+        False, "--no-langfuse", help="Disable Langfuse stack during cleanup"
+    ),
+) -> None:
+    """Fully stop the platform, delete volumes, and prune Docker cache."""
+    _ensure_docker_installed()
+    core_compose, compose_args = _compose_args(project_dir, no_langfuse)
+
+    console.print("[cyan]⏻ Removing containers and volumes…[/cyan]")
+    _run_env([*_COMPOSE_BIN, *compose_args, "down", "-v"], os.environ.copy())
+
+    if prune_system:
+        console.print("[cyan]🗑  Pruning dangling Docker data…[/cyan]")
+        _run(["docker", "system", "prune", "-f"])
+
+    console.print("[green]✓ Clean complete.[/green]")
+
+
 if __name__ == "__main__":  # pragma: no cover – executed only when run directly
     app()
