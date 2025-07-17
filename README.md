@@ -1,6 +1,6 @@
 # AgentSystems SDK & CLI
 
-[![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/graph/badge.svg?token=A6KFU4Y3HP)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
+[![CI](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/graph/badge.svg?token=A6KFU4Y3HP)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
 
 The AgentSystems **SDK** is a single-install Python package that provides several components:
 
