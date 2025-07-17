@@ -51,3 +51,87 @@ def test_config_validation_error(tmp_path: Path):
     cfg_path = _write_yaml(tmp_path, yaml_missing_registry)
     with pytest.raises(ValueError):
         Config(cfg_path)
+
+
+# ---------------------------------------------------------------------------
+# Additional edge-case and happy-path tests (merged formerly test_config_extra)
+# ---------------------------------------------------------------------------
+
+yaml_no_agents = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+"""
+
+yaml_empty_registries = """
+config_version: 1
+registry_connections: {}
+agents:
+  - name: foo
+    image: docker.io/agentsystems/foo:latest
+"""
+
+yaml_shorthand_default = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+agents:
+  - name: foo
+    registry_connection: dockerhub
+    repo: agentsystems/foo
+"""
+
+yaml_shorthand_tag = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+agents:
+  - name: foo
+    registry_connection: dockerhub
+    repo: agentsystems/foo
+    tag: v1
+"""
+
+yaml_enabled_flag = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+    enabled: true
+  ghcr:
+    url: ghcr.io
+    enabled: false
+agents:
+  - name: foo
+    registry_connection: dockerhub
+    repo: agentsystems/foo
+"""
+
+
+def test_no_agents(tmp_path: Path):
+    with pytest.raises(ValueError):
+        Config(_write_yaml(tmp_path, yaml_no_agents))
+
+
+def test_empty_registries(tmp_path: Path):
+    with pytest.raises(ValueError):
+        Config(_write_yaml(tmp_path, yaml_empty_registries))
+
+
+def test_shorthand_default_tag(tmp_path: Path):
+    cfg = Config(_write_yaml(tmp_path, yaml_shorthand_default))
+    assert cfg.images() == ["docker.io/agentsystems/foo:latest"]
+
+
+def test_shorthand_explicit_tag(tmp_path: Path):
+    cfg = Config(_write_yaml(tmp_path, yaml_shorthand_tag))
+    assert cfg.images() == ["docker.io/agentsystems/foo:v1"]
+
+
+def test_enabled_registries(tmp_path: Path):
+    cfg = Config(_write_yaml(tmp_path, yaml_enabled_flag))
+    names = [r.name for r in cfg.enabled_registries()]
+    assert names == ["dockerhub"]
