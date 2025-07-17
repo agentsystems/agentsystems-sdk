@@ -135,3 +135,40 @@ def test_enabled_registries(tmp_path: Path):
     cfg = Config(_write_yaml(tmp_path, yaml_enabled_flag))
     names = [r.name for r in cfg.enabled_registries()]
     assert names == ["dockerhub"]
+
+
+# ---------------------------------------------------------------------------
+# Agent declaration variant tests
+# ---------------------------------------------------------------------------
+
+yaml_explicit_image = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+agents:
+  - name: foo
+    image: docker.io/agentsystems/foo:123
+"""
+
+
+def test_explicit_image_variant(tmp_path: Path):
+    cfg = Config(_write_yaml(tmp_path, yaml_explicit_image))
+    assert cfg.images() == ["docker.io/agentsystems/foo:123"]
+
+
+yaml_missing_repo = """
+config_version: 1
+registry_connections:
+  dockerhub:
+    url: docker.io
+agents:
+  - name: foo
+    registry_connection: dockerhub
+    # repo missing
+"""
+
+
+def test_missing_repo_key(tmp_path: Path):
+    with pytest.raises(ValueError):
+        Config(_write_yaml(tmp_path, yaml_missing_repo))

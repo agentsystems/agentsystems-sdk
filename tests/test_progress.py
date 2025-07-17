@@ -28,3 +28,18 @@ def test_init_and_update(monkeypatch):
     assert init_payload["progress"]["percent"] == 0
     update_path, update_payload = sent[1]
     assert update_payload["progress"]["percent"] == 50
+
+
+def test_multiple_updates_no_plan(monkeypatch):
+    """init without plan then two updates should yield exactly 2 POSTs."""
+    sent = []
+    monkeypatch.setattr(pt, "_post", lambda *args, **kwargs: sent.append(args))
+
+    pt.init("tid", gateway_url="http://gw")
+    pt.update(percent=10)
+    pt.update(percent=20)
+
+    assert len(sent) == 2
+    # first update percent 10, second 20
+    assert sent[0][1]["progress"]["percent"] == 10
+    assert sent[1][1]["progress"]["percent"] == 20
