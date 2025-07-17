@@ -121,3 +121,17 @@ def test_ensure_docker_installed_exit(monkeypatch):
     monkeypatch.setattr(shutil, "which", lambda _: None)
     with pytest.raises(typer.Exit):
         _ensure_docker_installed()
+
+
+def test_status_command_no_docker(tmp_path, monkeypatch):
+    """status should exit 1 when docker CLI is missing."""
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    result = runner.invoke(app, ["status", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "Docker CLI not found" in result.stdout
+
+
+def test_app_invocation_no_args():
+    result = runner.invoke(app, [])
+    # No options provided: callback does nothing but exit 0
+    assert result.exit_code == 0
