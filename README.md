@@ -1,6 +1,6 @@
 # AgentSystems SDK & CLI
 
-The AgentSystems **SDK** is a single-install Python package that provides:
+The AgentSystems **SDK** is a single-install Python package that provides several components:
 
 * `agentsystems` — a polished command-line interface for bootstrapping and operating an AgentSystems deployment.
 * A small helper library (future) so you can embed AgentSystems clients in your own code.
