@@ -1,3 +1,4 @@
 pre-commit
 pytest
 pytest-cov
+requests-mock>=1.12

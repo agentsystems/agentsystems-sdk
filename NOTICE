@@ -23,3 +23,6 @@ PyYAML – MIT License
 Copyright (c) 2017-2021 Ingy döt Net
 Copyright (c) 2006-2016 Kirill Simonov
 https://github.com/yaml/pyyaml
+
+Requests – Apache-2.0 License
+https://github.com/psf/requests

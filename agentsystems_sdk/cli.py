@@ -26,6 +26,8 @@ import subprocess
 import sys
 import time
 from typing import List, Optional, Dict
+import json
+import requests
 
 from agentsystems_sdk.config import Config  # new
 
@@ -1103,6 +1105,117 @@ def status(
     core_compose, compose_args = _compose_args(project_dir, no_langfuse)
     cmd = [*_COMPOSE_BIN, *compose_args, "ps"]
     _run_env(cmd, os.environ.copy())
+
+
+# ------------------------------------------------------------------
+# ------------------------------------------------------------------
+# run command (new)
+# ------------------------------------------------------------------
+
+
+@app.command()
+def run(
+    agent: str = typer.Argument(..., help="Name of the agent to invoke"),
+    payload: str = typer.Argument(
+        ...,
+        help="Inline JSON string or path to a JSON file",
+    ),
+    gateway: str = typer.Option(
+        None,
+        "--gateway",
+        envvar="GATEWAY_BASE_URL",
+        help="Gateway base URL (default http://localhost:8080)",
+    ),
+    poll_interval: float = typer.Option(
+        2.0, "--interval", "-i", help="Seconds between status polls"
+    ),
+    token: str | None = typer.Option(
+        None, "--token", "-t", help="Bearer token for Authorization header"
+    ),
+):
+    """Invoke *agent* with given JSON *payload* and stream progress until completion."""
+
+    gateway_base = gateway or os.getenv("GATEWAY_BASE_URL", "http://localhost:8080")
+    invoke_url = f"{gateway_base.rstrip('/')}/invoke/{agent}"
+
+    # Read JSON payload (inline string or file path)
+    try:
+        if os.path.isfile(payload):
+            payload_data = json.loads(pathlib.Path(payload).read_text(encoding="utf-8"))
+        else:
+            payload_data = json.loads(payload)
+    except Exception as exc:
+        typer.secho(f"Invalid JSON payload: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = (
+            f"Bearer {token}" if not token.startswith("Bearer ") else token
+        )
+
+    console.print(f"[cyan]⇢ Invoking {agent}…[/cyan]")
+    try:
+        r = requests.post(invoke_url, json=payload_data, headers=headers, timeout=60)
+        r.raise_for_status()
+    except Exception as exc:
+        typer.secho(f"Invocation failed: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    resp = r.json()
+    _thread_id = resp.get("thread_id")  # not used but kept for potential future needs
+    status_url = f"{gateway_base.rstrip('/')}{resp.get('status_url')}"  # already contains leading /
+    result_url = f"{gateway_base.rstrip('/')}{resp.get('result_url')}"
+
+    # Progress bar setup
+    prog = Progress(
+        SpinnerColumn(),
+        BarColumn(),
+        TextColumn("{task.fields[msg]}", justify="left"),
+        TimeElapsedColumn(),
+        console=console,
+    )
+    task_id = prog.add_task("progress", total=100, msg="queued")
+
+    def _update_bar(state: dict):
+        progress_raw = state.get("progress") if state else None
+        progress_obj: dict = progress_raw or {}
+        percent = progress_obj.get("percent")
+        msg = progress_obj.get("current", state.get("state"))
+        if percent is None:
+            percent = (
+                0 if state.get("state") == "queued" else prog.tasks[task_id].completed
+            )
+        prog.update(task_id, completed=percent, msg=str(msg))
+
+    with prog:
+        while True:
+            try:
+                s = requests.get(status_url, headers=headers, timeout=10)
+                s.raise_for_status()
+                st = s.json()
+            except Exception as exc:
+                prog.console.print(f"[red]Status poll failed: {exc}[/red]")
+                time.sleep(poll_interval)
+                continue
+
+            _update_bar(st)
+            state_val = st.get("state")
+            if state_val in ("completed", "failed"):
+                break
+            time.sleep(poll_interval)
+
+    # Fetch final result
+    try:
+        res = requests.get(result_url, headers=headers, timeout=30)
+        res.raise_for_status()
+    except Exception as exc:
+        typer.secho(f"Failed to fetch result: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    console.print("[green]✓ Invocation finished. Result:[/green]")
+    pretty = json.dumps(res.json(), indent=2)
+    console.print(Panel(pretty, title="Result", expand=False))
 
 
 # ------------------------------------------------------------------
