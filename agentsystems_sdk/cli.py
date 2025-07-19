@@ -125,16 +125,30 @@ def _docker_login_if_needed(token: str | None) -> None:
 
 
 def _ensure_agents_net() -> None:
-    """Create the shared Docker network 'agents-net' if absent."""
-    try:
-        subprocess.run(
-            ["docker", "network", "inspect", "agents-net"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=True,
-        )
-    except subprocess.CalledProcessError:
-        subprocess.check_call(["docker", "network", "create", "agents-net"])
+    """Ensure required Docker networks exist.
+
+    * agents-int – internal bridge (no outbound NAT) for agent<->gateway traffic.
+    * agents-net – external bridge (default) for gateway <-> Internet.
+    """
+
+    # Helper to check/create network
+    def _ensure(name: str, extra: list[str] | None = None) -> None:
+        try:
+            subprocess.run(
+                ["docker", "network", "inspect", name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            cmd = ["docker", "network", "create"]
+            if extra:
+                cmd.extend(extra)
+            cmd.append(name)
+            subprocess.check_call(cmd)
+
+    _ensure("agents-int", ["--internal"])
+    _ensure("agents-net", [])
 
 
 # ---------------------------------------------------------------------------
@@ -830,7 +844,7 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
             "--name",
             cname,
             "--network",
-            "agents-net",
+            "agents-int",
             "--env-file",
             str(env_file_path) if env_file_path.exists() else "/dev/null",
         ]
@@ -840,6 +854,17 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         # env overrides
         for k, v in agent.overrides.get("env", {}).items():
             cmd.extend(["--env", f"{k}={v}"])
+        # gateway proxy env
+        cmd.extend(
+            [
+                "--env",
+                "HTTP_PROXY=http://gateway:3128",
+                "--env",
+                "HTTPS_PROXY=http://gateway:3128",
+                "--env",
+                "NO_PROXY=gateway,localhost,127.0.0.1",
+            ]
+        )
         # port mapping (random host port)
         cmd.extend(["-p", port])
         # image
