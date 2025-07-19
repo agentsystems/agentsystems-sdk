@@ -94,6 +94,8 @@ class Agent:
         # ----- optional keys -----------------------------------------------
         self.labels: Dict[str, str] = data.get("labels", {})
         self.overrides: Dict = data.get("overrides", {})
+        # New: list of allowed outbound URL patterns for gateway proxy
+        self.egress_allowlist: List[str] = data.get("egress_allowlist", [])
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"Agent(name={self.name}, image={self.image})"
