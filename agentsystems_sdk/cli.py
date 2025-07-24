@@ -26,6 +26,7 @@ import subprocess
 import sys
 import time
 from typing import List, Optional, Dict
+from enum import Enum
 import json
 import requests
 
@@ -278,6 +279,12 @@ def main(
     # Callback body intentionally empty – options handled via callbacks.
 
 
+class AgentStartMode(str, Enum):
+    none = "none"
+    create = "create"
+    all = "all"
+
+
 @app.command()
 def init(
     project_dir: Optional[pathlib.Path] = typer.Argument(
@@ -524,6 +531,12 @@ def up(
     no_langfuse: bool = typer.Option(
         False, "--no-langfuse", help="Disable Langfuse tracing stack"
     ),
+    agents_mode: AgentStartMode = typer.Option(
+        AgentStartMode.create,
+        "--agents",
+        help="Agent startup mode: all (start), create (pull & create containers stopped), none (skip agents)",
+        show_default=True,
+    ),
     env_file: Optional[pathlib.Path] = typer.Option(
         None,
         "--env-file",
@@ -646,7 +659,7 @@ def up(
     # --------------------------------------------------
     # If config specified agents, ensure registries are logged in & images pulled, then run containers
     if cfg:
-        _setup_agents_from_config(cfg, project_dir)
+        _setup_agents_from_config(cfg, project_dir, agents_mode)
 
     # Wait for readiness
     # Restart gateway so it picks up any newly started agents (routing table reload)
@@ -673,7 +686,9 @@ def up(
 # Marketplace helpers -------------------------------------------------------
 
 
-def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
+def _setup_agents_from_config(
+    cfg: Config, project_dir: pathlib.Path, mode: AgentStartMode = AgentStartMode.create
+) -> None:
     """Login to each enabled registry in an isolated config & start agents.
 
     We always log in using credentials specified in `.env` / env-vars, never
@@ -790,7 +805,12 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
     # Reset env_base for container startup (credentials no longer needed)
     env_base = os.environ.copy()
 
-    # 3. Start containers
+    # ------------------------------------------------------------------
+    # 3. Create/start containers based on *mode*
+    if mode == AgentStartMode.none:
+        return
+
+    # Start containers
     env_file_path = project_dir / ".env"
     if not env_file_path.exists():
         console.print(
@@ -835,19 +855,31 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         expose_ports = agent.overrides.get("expose", [labels["agent.port"]])
         port = str(expose_ports[0])
 
-        cmd = [
-            "docker",
-            "run",
-            "-d",
-            "--restart",
-            "unless-stopped",
-            "--name",
-            cname,
-            "--network",
-            "agents-int",
-            "--env-file",
-            str(env_file_path) if env_file_path.exists() else "/dev/null",
-        ]
+        # Build docker command -----------------------------------------------------------------
+        if mode == AgentStartMode.create:
+            cmd = [
+                "docker",
+                "create",
+            ]
+        else:  # mode == AgentStartMode.all
+            cmd = [
+                "docker",
+                "run",
+                "-d",
+            ]
+        cmd.extend(
+            [
+                "--restart",
+                "unless-stopped",
+                "--name",
+                cname,
+                "--network",
+                "agents-int",
+                "--env-file",
+                str(env_file_path) if env_file_path.exists() else "/dev/null",
+            ]
+        )
+
         # labels
         for k, v in labels.items():
             cmd.extend(["--label", f"{k}={v}"])
@@ -870,12 +902,15 @@ def _setup_agents_from_config(cfg: Config, project_dir: pathlib.Path) -> None:
         # image
         cmd.append(agent.image)
 
-        console.print(f"[cyan]▶ starting {cname} ({agent.image})…[/cyan]")
+        console.print(f"[cyan]▶ preparing {cname} ({agent.image})…[/cyan]")
         subprocess.run(cmd, check=True, env=env_base)
-        if _wait_for_agent_healthy(client, cname):
-            console.print(f"[green]✓ {cname} ready.[/green]")
-        else:
-            console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
+
+        if mode == "all":
+            # Wait for health only when container started
+            if _wait_for_agent_healthy(client, cname):
+                console.print(f"[green]✓ {cname} ready.[/green]")
+            else:
+                console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
 
 
 def _wait_for_agent_healthy(
