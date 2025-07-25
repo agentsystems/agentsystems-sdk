@@ -94,8 +94,20 @@ class Agent:
         # ----- optional keys -----------------------------------------------
         self.labels: Dict[str, str] = data.get("labels", {})
         self.overrides: Dict = data.get("overrides", {})
-        # New: list of allowed outbound URL patterns for gateway proxy
+        # List of allowed outbound URL patterns for gateway proxy
         self.egress_allowlist: List[str] = data.get("egress_allowlist", [])
+
+        # ----- artifact permissions -----------------------------------------
+        perms: Dict = data.get("artifact_permissions", {})
+
+        # Agents may specify readers/writers as list[str] or "*" wildcard
+        def _normalize(val):
+            if val == "*":
+                return ["*"]
+            return val or []
+
+        self.artifact_readers: List[str] = _normalize(perms.get("readers"))
+        self.artifact_writers: List[str] = _normalize(perms.get("writers"))
 
     def __repr__(self) -> str:  # pragma: no cover
         return f"Agent(name={self.name}, image={self.image})"

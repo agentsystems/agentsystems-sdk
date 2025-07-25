@@ -701,6 +701,28 @@ def _setup_agents_from_config(
     client = docker.from_env()
     _ensure_agents_net()
 
+    # ------------------------------------------------------------------
+    # Artifact volume – fixed per-agent mounts (thread ID handled at runtime)
+    # ------------------------------------------------------------------
+
+    # Build mapping of agent name -> list of read-only artifact subpaths they can access
+    read_paths_by_agent: Dict[str, List[str]] = {a.name: [] for a in cfg.agents}
+    for owner in cfg.agents:
+        readers = owner.artifact_readers
+        if "*" in readers:
+            # All other agents may read this owner's outputs
+            for reader_agent in cfg.agents:
+                if reader_agent.name != owner.name:
+                    read_paths_by_agent[reader_agent.name].append(
+                        f"/artifacts/{owner.name}/output"
+                    )
+        else:
+            for reader_name in readers:
+                if reader_name != owner.name and reader_name in read_paths_by_agent:
+                    read_paths_by_agent[reader_name].append(
+                        f"/artifacts/{owner.name}/output"
+                    )
+
     # --- Pull images per registry using isolated DOCKER_CONFIG dirs ------
     # Build mapping of registry key -> list[Agent]
     from collections import defaultdict
@@ -886,6 +908,24 @@ def _setup_agents_from_config(
         # env overrides
         for k, v in agent.overrides.get("env", {}).items():
             cmd.extend(["--env", f"{k}={v}"])
+
+        # ----- Artifact volume mounts & env vars --------------------------
+        # Own output directory – read-write
+        own_output_path = f"/artifacts/{agent.name}/output"
+        cmd.extend(["--volume", f"agentsystems-artifacts:{own_output_path}"])
+
+        # Read-only mounts for outputs we are allowed to see
+        ro_paths = read_paths_by_agent.get(agent.name, [])
+        if len(ro_paths) >= len(cfg.agents) - 1 and ro_paths:
+            # If agent can read every other agent, mount root as RO for simplicity
+            cmd.extend(["--volume", "agentsystems-artifacts:/artifacts:ro"])
+        else:
+            for _p in ro_paths:
+                cmd.extend(["--volume", f"agentsystems-artifacts:{_p}:ro"])
+
+        # Inject agent-specific environment variable
+        cmd.extend(["--env", f"AGENT_NAME={agent.name}"])
+
         # gateway proxy env
         cmd.extend(
             [
@@ -1279,6 +1319,61 @@ def run(
 
 
 # ------------------------------------------------------------------
+# artifacts-path helper command ------------------------------------------------------------------
+
+
+@app.command("artifacts-path")
+def artifacts_path(
+    relative_path: str | None = typer.Argument(
+        None,
+        help="Optional path inside input/output folder to append",
+    ),
+    agent_name: str | None = typer.Option(
+        None,
+        "--agent-name",
+        "-a",
+        envvar="AGENT_NAME",
+        help="Agent name (defaults to $AGENT_NAME)",
+    ),
+    thread_id: str | None = typer.Option(
+        None,
+        "--thread-id",
+        "-t",
+        help="Thread ID to include as subfolder (omit for top-level input/output folder)",
+    ),
+    input_dir: bool = typer.Option(
+        False,
+        "--input/--output",
+        help="Return path under input/ instead of output/ (default output)",
+    ),
+) -> None:
+    """Print a fully-qualified path inside the shared artifacts volume.
+
+    Examples::
+
+        # Path to my agent's output folder
+        agentsystems artifacts-path
+
+        # Path to another agent's output artifact
+        agentsystems artifacts-path --agent-name other --artifacts-dir /artifacts/abcd file.json
+    """
+    if agent_name is None:
+        typer.secho(
+            "AGENT_NAME not set – specify --agent-name or export the env var.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+
+    base = (
+        pathlib.Path("/artifacts") / agent_name / ("input" if input_dir else "output")
+    )
+    if thread_id:
+        base = base / thread_id
+    if relative_path:
+        base = base / relative_path
+    typer.echo(str(base))
+
+
 # clean command (new)
 # ------------------------------------------------------------------
 
