@@ -1220,6 +1220,15 @@ def run(
         ...,
         help="Inline JSON string or path to a JSON file",
     ),
+    input_files: List[pathlib.Path] = typer.Option(
+        None,
+        "--input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+        help="One or more files to upload alongside the JSON payload (pass multiple paths after --input-file)",
+    ),
     gateway: str = typer.Option(
         None,
         "--gateway",
@@ -1248,7 +1257,7 @@ def run(
         typer.secho(f"Invalid JSON payload: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
 
-    headers: dict[str, str] = {"Content-Type": "application/json"}
+    headers: dict[str, str] = {}  # set below
     if token:
         headers["Authorization"] = (
             f"Bearer {token}" if not token.startswith("Bearer ") else token
@@ -1256,7 +1265,17 @@ def run(
 
     console.print(f"[cyan]⇢ Invoking {agent}…[/cyan]")
     try:
-        r = requests.post(invoke_url, json=payload_data, headers=headers, timeout=60)
+        if input_files:
+            files = [("file", (path.name, open(path, "rb"))) for path in input_files]
+            data = {"json": json.dumps(payload_data)}
+            r = requests.post(
+                invoke_url, files=files, data=data, headers=headers, timeout=60
+            )
+        else:
+            headers.setdefault("Content-Type", "application/json")
+            r = requests.post(
+                invoke_url, json=payload_data, headers=headers, timeout=60
+            )
         r.raise_for_status()
     except Exception as exc:
         typer.secho(f"Invocation failed: {exc}", fg=typer.colors.RED)
