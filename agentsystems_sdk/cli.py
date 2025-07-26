@@ -898,8 +898,7 @@ def _setup_agents_from_config(
         # Artifact permissions are enforced at the application level via agentsystems-config.yml
         cmd.extend(["--volume", "agentsystems-artifacts:/artifacts"])
 
-        # Inject agent-specific environment variable
-        cmd.extend(["--env", f"AGENT_NAME={agent.name}"])
+        # Note: AGENT_NAME no longer needed with thread-centric artifact structure
 
         # gateway proxy env
         cmd.extend(
@@ -1318,51 +1317,33 @@ def run(
 
 @app.command("artifacts-path")
 def artifacts_path(
+    thread_id: str = typer.Argument(
+        ...,
+        help="Thread ID for the artifact directory",
+    ),
     relative_path: str | None = typer.Argument(
         None,
-        help="Optional path inside input/output folder to append",
-    ),
-    agent_name: str | None = typer.Option(
-        None,
-        "--agent-name",
-        "-a",
-        envvar="AGENT_NAME",
-        help="Agent name (defaults to $AGENT_NAME)",
-    ),
-    thread_id: str | None = typer.Option(
-        None,
-        "--thread-id",
-        "-t",
-        help="Thread ID to include as subfolder (omit for top-level input/output folder)",
+        help="Optional path inside in/out folder to append",
     ),
     input_dir: bool = typer.Option(
         False,
         "--input/--output",
-        help="Return path under input/ instead of output/ (default output)",
+        help="Return path under in/ instead of out/ (default out)",
     ),
 ) -> None:
     """Print a fully-qualified path inside the shared artifacts volume.
 
+    Thread-centric structure: /artifacts/{thread_id}/{in,out}/
+
     Examples::
 
-        # Path to my agent's output folder
-        agentsystems artifacts-path
+        # Path to thread's output folder
+        agentsystems artifacts-path abc123
 
-        # Path to another agent's output artifact
-        agentsystems artifacts-path --agent-name other --artifacts-dir /artifacts/abcd file.json
+        # Path to specific file in thread's input folder
+        agentsystems artifacts-path abc123 data.txt --input
     """
-    if agent_name is None:
-        typer.secho(
-            "AGENT_NAME not set – specify --agent-name or export the env var.",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(code=1)
-
-    base = (
-        pathlib.Path("/artifacts") / agent_name / ("input" if input_dir else "output")
-    )
-    if thread_id:
-        base = base / thread_id
+    base = pathlib.Path("/artifacts") / thread_id / ("in" if input_dir else "out")
     if relative_path:
         base = base / relative_path
     typer.echo(str(base))
