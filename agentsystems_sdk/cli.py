@@ -702,26 +702,10 @@ def _setup_agents_from_config(
     _ensure_agents_net()
 
     # ------------------------------------------------------------------
-    # Artifact volume – fixed per-agent mounts (thread ID handled at runtime)
+    # Artifact volume – mount full volume, permissions enforced at app level
     # ------------------------------------------------------------------
-
-    # Build mapping of agent name -> list of read-only artifact subpaths they can access
-    read_paths_by_agent: Dict[str, List[str]] = {a.name: [] for a in cfg.agents}
-    for owner in cfg.agents:
-        readers = owner.artifact_readers
-        if "*" in readers:
-            # All other agents may read this owner's outputs
-            for reader_agent in cfg.agents:
-                if reader_agent.name != owner.name:
-                    read_paths_by_agent[reader_agent.name].append(
-                        f"/artifacts/{owner.name}/output"
-                    )
-        else:
-            for reader_name in readers:
-                if reader_name != owner.name and reader_name in read_paths_by_agent:
-                    read_paths_by_agent[reader_name].append(
-                        f"/artifacts/{owner.name}/output"
-                    )
+    # Note: All agents get full /artifacts volume mount. Artifact permissions
+    # are enforced at the application level via agentsystems-config.yml
 
     # --- Pull images per registry using isolated DOCKER_CONFIG dirs ------
     # Build mapping of registry key -> list[Agent]
@@ -910,18 +894,9 @@ def _setup_agents_from_config(
             cmd.extend(["--env", f"{k}={v}"])
 
         # ----- Artifact volume mounts & env vars --------------------------
-        # Own output directory – read-write
-        own_output_path = f"/artifacts/{agent.name}/output"
-        cmd.extend(["--volume", f"agentsystems-artifacts:{own_output_path}"])
-
-        # Read-only mounts for outputs we are allowed to see
-        ro_paths = read_paths_by_agent.get(agent.name, [])
-        if len(ro_paths) >= len(cfg.agents) - 1 and ro_paths:
-            # If agent can read every other agent, mount root as RO for simplicity
-            cmd.extend(["--volume", "agentsystems-artifacts:/artifacts:ro"])
-        else:
-            for _p in ro_paths:
-                cmd.extend(["--volume", f"agentsystems-artifacts:{_p}:ro"])
+        # Mount full artifacts volume – agent manages its own subdirectories
+        # Artifact permissions are enforced at the application level via agentsystems-config.yml
+        cmd.extend(["--volume", "agentsystems-artifacts:/artifacts"])
 
         # Inject agent-specific environment variable
         cmd.extend(["--env", f"AGENT_NAME={agent.name}"])
