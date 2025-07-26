@@ -58,7 +58,7 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | `agentsystems restart [PROJECT_DIR]` | Quick bounce (`down` → `up`). **Waits for readiness by default**. Pass `--no-wait` to skip. **Requires `.env`**. |
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
-| `agentsystems artifacts-path [REL_PATH]` | Resolve a path inside the shared artifacts volume (uses $ARTIFACTS_DIR and $AGENT_NAME). |
+| `agentsystems artifacts-path THREAD_ID [REL_PATH]` | Resolve a path inside the shared artifacts volume using thread-centric structure. |
 
 ### `up` options
 
