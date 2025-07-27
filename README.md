@@ -59,6 +59,7 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | `agentsystems info` | Show environment diagnostics (SDK, Python, Docker). |
 | `agentsystems version` | Show the installed SDK version. |
 | `agentsystems artifacts-path THREAD_ID [REL_PATH]` | Resolve a path inside the shared artifacts volume using thread-centric structure. |
+| `agentsystems run AGENT PAYLOAD` | Invoke an agent with JSON payload and optional file uploads, stream progress, and return results. |
 
 ### `up` options
 
@@ -95,6 +96,109 @@ agentsystems up /opt/agent-platform-deployments --fresh --detach
 ```
 
 ---
+
+## File Uploads & Artifacts
+
+The AgentSystems platform supports file uploads to agents and provides tools for managing artifacts.
+
+### Uploading Files to Agents
+
+Use the `run` command to invoke agents with file uploads:
+
+```bash
+# Upload single file with JSON payload
+agentsystems run agent-name '{"format": "csv"}' --input-file data.csv
+
+# Upload multiple files
+agentsystems run agent-name '{"sync": true}' \
+  --input-file input1.txt \
+  --input-file input2.txt
+
+# Use file path for JSON payload
+echo '{"date": "July 4"}' > payload.json
+agentsystems run agent-name payload.json --input-file date.txt
+```
+
+### Artifacts Management
+
+The platform uses a thread-centric artifacts structure where each request gets a unique directory:
+
+```
+/artifacts/
+├── {thread-id}/
+│   ├── in/          # Files uploaded by client
+│   └── out/         # Files created by agent
+```
+
+#### Using artifacts-path Command
+
+Get paths for reading/writing artifacts:
+
+```bash
+# Get path to thread's output directory
+agentsystems artifacts-path abc123-def456
+
+# Get path to specific output file
+agentsystems artifacts-path abc123-def456 result.json
+
+# Get path to input directory
+agentsystems artifacts-path abc123-def456 --input
+
+# Get path to specific input file
+agentsystems artifacts-path abc123-def456 data.csv --input
+```
+
+#### Manual Artifact Access
+
+You can also access artifacts directly through any container with the volume mounted:
+
+```bash
+# List all active threads
+docker exec local-gateway-1 ls -la /artifacts/
+
+# Read agent output files
+docker exec local-gateway-1 cat /artifacts/{thread-id}/out/result.txt
+
+# Check uploaded input files
+docker exec local-gateway-1 ls -la /artifacts/{thread-id}/in/
+```
+
+### Volume Mounting for Agents
+
+When deploying agents through `agentsystems-config.yml`, the CLI automatically:
+
+1. **Mounts artifacts volume**: All agents get `/artifacts` mounted with proper permissions
+2. **Creates thread directories**: Gateway creates `/artifacts/{thread-id}/{in,out}/` as needed
+3. **Handles file uploads**: Gateway saves uploaded files to `/artifacts/{thread-id}/in/`
+4. **Manages permissions**: Ensures agents (UID 1001) can read/write artifacts
+
+### Agent Development
+
+When building agents that handle file uploads:
+
+```python
+# In your agent's invoke() function
+import pathlib
+from fastapi import Request
+
+def invoke(request: Request, req: InvokeRequest):
+    thread_id = request.headers.get("X-Thread-Id", "")
+
+    # Read uploaded files
+    in_dir = pathlib.Path("/artifacts") / thread_id / "in"
+    if (in_dir / "data.txt").exists():
+        content = (in_dir / "data.txt").read_text()
+
+    # Write output files
+    out_dir = pathlib.Path("/artifacts") / thread_id / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "result.json").write_text('{"status": "complete"}')
+```
+
+See the [agent-template](https://github.com/agentsystems/agent-template) for a complete example.
+
+---
+
 ### `init` options
 
 ```
