@@ -1,6 +1,6 @@
 [project]
 name = "agentsystems-sdk"
-version = "0.2.25"
+version = "0.2.26"
 description = "AgentSystems Python SDK and CLI"
 readme = "README.md"
 authors = [ { name = "AgentSystems", email = "support@agentsystems.ai" } ]
