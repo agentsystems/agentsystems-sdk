@@ -159,7 +159,16 @@ def _ensure_agents_net() -> None:
 
 def _cleanup_init_vars(env_path: pathlib.Path) -> None:
     """Comment-out one-time LANGFUSE_INIT_* vars after first successful start."""
-    lines = env_path.read_text().splitlines()
+    content = env_path.read_text()
+
+    # Check if already cleaned up
+    if (
+        "# --- Langfuse initialization values (no longer used after first start) ---"
+        in content
+    ):
+        return
+
+    lines = content.splitlines()
     init_lines: list[str] = []
     other_lines: list[str] = []
     for ln in lines:
