@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
-from typing import Optional
 
 import typer
 from rich.console import Console
@@ -11,48 +11,61 @@ from rich.console import Console
 from ..utils import (
     ensure_docker_installed,
     compose_args,
-    run_command,
+    run_command_with_env,
+    wait_for_gateway_ready,
 )
 
 console = Console()
 
 
 def restart_command(
-    service: Optional[str] = typer.Argument(
-        None,
-        help="Service name to restart. If omitted, restarts all services.",
-    ),
-    project_dir: pathlib.Path = typer.Option(
+    project_dir: pathlib.Path = typer.Argument(
         ".",
         exists=True,
         file_okay=False,
         dir_okay=True,
         readable=True,
         resolve_path=True,
-        help="Path to agent-platform-deployments",
+        help="Path to an agent-platform-deployments checkout",
+    ),
+    detach: bool = typer.Option(
+        True,
+        "--detach/--foreground",
+        "-d",
+        help="Run containers in background (default) or stream logs in foreground",
+    ),
+    wait_ready: bool = typer.Option(
+        True,
+        "--wait/--no-wait",
+        help="After start, wait until gateway is ready (detached mode only)",
     ),
     no_langfuse: bool = typer.Option(
-        False, "--no-langfuse", help="Disable Langfuse stack"
+        False, "--no-langfuse", help="Disable Langfuse tracing stack"
     ),
-) -> None:
-    """Restart service(s).
+):
+    """Quick bounce: `down` → `up` (non-destructive).
 
-    Examples:
-      agentsystems restart           # restart all services
-      agentsystems restart gateway   # restart just the gateway
+    Retains data volumes; wipe with `down --delete-volumes` first.
+    Useful during development and CI.
     """
     ensure_docker_installed()
-
     compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    env = os.environ.copy()
 
-    cmd = [*compose_args_list, "restart"]
+    # Stop current stack
+    cmd_down: list[str] = [*compose_args_list, "down"]
+    console.print("[cyan]⏻ Stopping core services…[/cyan]")
+    run_command_with_env(cmd_down, env)
 
-    if service:
-        cmd.append(service)
-        console.print(f"[cyan]↻ Restarting {service}...[/cyan]")
-    else:
-        console.print("[cyan]↻ Restarting all services...[/cyan]")
+    # Start stack again
+    cmd_up: list[str] = [*compose_args_list, "up"]
+    if detach:
+        cmd_up.append("-d")
+    console.print("[cyan]⏫ Starting core services…[/cyan]")
+    run_command_with_env(cmd_up, env)
 
-    run_command(cmd)
-
-    console.print("[green]✓ Restart complete[/green]")
+    # Optional readiness wait
+    if wait_ready and detach:
+        gateway_url = "http://localhost:18080"
+        wait_for_gateway_ready(gateway_url)
+    console.print("[green]✓ Restart complete.[/green]")

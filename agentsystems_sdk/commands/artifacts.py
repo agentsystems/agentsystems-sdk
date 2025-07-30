@@ -3,55 +3,39 @@
 from __future__ import annotations
 
 import pathlib
+from typing import Optional
 
-import docker
 import typer
-from rich.console import Console
-
-console = Console()
 
 
 def artifacts_path_command(
-    thread_id: str = typer.Argument(..., help="Thread ID to resolve"),
-    subdir: str = typer.Option("in", help="Subdirectory: 'in' or 'out'"),
+    thread_id: str = typer.Argument(
+        ...,
+        help="Thread ID for the artifact directory",
+    ),
+    relative_path: Optional[str] = typer.Argument(
+        None,
+        help="Optional path inside in/out folder to append",
+    ),
+    input_dir: bool = typer.Option(
+        False,
+        "--input/--output",
+        help="Return path under in/ instead of out/ (default out)",
+    ),
 ) -> None:
-    """Get the file path for a given thread's artifacts directory.
+    """Print a fully-qualified path inside the shared artifacts volume.
 
-    Outputs the absolute path on the host filesystem where artifacts for the given
-    thread ID are stored. Useful for scripts that need to access uploaded/generated files.
+    Thread-centric structure: /artifacts/{thread_id}/{in,out}/
 
-    The 'in' subdirectory contains uploaded files.
-    The 'out' subdirectory contains agent-generated files.
+    Examples::
+
+        # Path to thread's output folder
+        agentsystems artifacts-path abc123
+
+        # Path to specific file in thread's input folder
+        agentsystems artifacts-path abc123 data.txt --input
     """
-    try:
-        client = docker.from_env()
-    except Exception:
-        typer.secho("Docker not available", fg=typer.colors.RED, err=True)
-        raise typer.Exit(code=1)
-
-    # Find the artifacts volume
-    try:
-        volume = client.volumes.get("agentsystems_artifacts")
-        mount_point = volume.attrs.get("Mountpoint", "")
-
-        if not mount_point:
-            typer.secho(
-                "Could not determine artifacts volume mount point",
-                fg=typer.colors.RED,
-                err=True,
-            )
-            raise typer.Exit(code=1)
-
-        # Construct the full path
-        artifact_path = pathlib.Path(mount_point) / thread_id / subdir
-
-        # Output just the path (for scripting)
-        typer.echo(str(artifact_path))
-
-    except docker.errors.NotFound:
-        typer.secho(
-            "Artifacts volume not found. Is the platform running?",
-            fg=typer.colors.RED,
-            err=True,
-        )
-        raise typer.Exit(code=1)
+    base = pathlib.Path("/artifacts") / thread_id / ("in" if input_dir else "out")
+    if relative_path:
+        base = base / relative_path
+    typer.echo(str(base))

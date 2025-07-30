@@ -6,7 +6,7 @@ from .down import down_command
 from .logs import logs_command
 from .restart import restart_command
 from .status import status_command
-from .run import run_command_cli as run_command
+from .run import run_command
 from .artifacts import artifacts_path_command
 from .clean import clean_command
 

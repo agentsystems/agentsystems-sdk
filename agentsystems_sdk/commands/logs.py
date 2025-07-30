@@ -2,60 +2,41 @@
 
 from __future__ import annotations
 
+import os
 import pathlib
-from typing import Optional
+from typing import List, Optional
 
 import typer
-from rich.console import Console
 
-from ..utils import (
-    ensure_docker_installed,
-    compose_args,
-    run_command,
-)
-
-console = Console()
+from ..utils import ensure_docker_installed, compose_args, run_command_with_env
 
 
 def logs_command(
-    service: Optional[str] = typer.Argument(
-        None,
-        help="Service name (e.g., gateway, postgres). If omitted, shows all services.",
-    ),
-    project_dir: pathlib.Path = typer.Option(
+    project_dir: pathlib.Path = typer.Argument(
         ".",
         exists=True,
         file_okay=False,
         dir_okay=True,
         readable=True,
         resolve_path=True,
-        help="Path to agent-platform-deployments",
+        help="Path to an agent-platform-deployments checkout",
     ),
     follow: bool = typer.Option(
-        False, "--follow", "-f", help="Follow log output (like tail -f)"
+        True, "--follow/--no-follow", "-f", help="Follow log output"
     ),
-    tail: int = typer.Option(100, "--tail", help="Number of lines to show"),
     no_langfuse: bool = typer.Option(
         False, "--no-langfuse", help="Disable Langfuse stack"
     ),
+    services: Optional[List[str]] = typer.Argument(
+        None, help="Optional list of services to show logs for"
+    ),
 ) -> None:
-    """Stream logs from services (similar to `docker compose logs`).
-
-    Examples:
-      agentsystems logs           # all services
-      agentsystems logs gateway   # just the gateway
-      agentsystems logs -f        # follow all logs
-    """
+    """Stream (or dump) logs from docker compose services."""
     ensure_docker_installed()
-
     compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
-
-    cmd = [*compose_args_list, "logs", f"--tail={tail}"]
-
+    cmd = [*compose_args_list, "logs"]
     if follow:
         cmd.append("-f")
-
-    if service:
-        cmd.append(service)
-
-    run_command(cmd)
+    if services:
+        cmd.extend(services)
+    run_command_with_env(cmd, os.environ.copy())

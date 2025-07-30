@@ -135,7 +135,7 @@ def test_ensure_docker_installed_exit(monkeypatch):
 def test_status_command_no_docker(tmp_path, monkeypatch):
     """status should exit 1 when docker CLI is missing."""
     monkeypatch.setattr(shutil, "which", lambda _: None)
-    result = runner.invoke(app, ["status", "--project-dir", str(tmp_path)])
+    result = runner.invoke(app, ["status", str(tmp_path)])
     assert result.exit_code == 1
     assert "Docker CLI not found" in result.stdout
 
