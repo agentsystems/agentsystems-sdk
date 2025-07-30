@@ -1,0 +1,167 @@
+"""Run commands in AgentSystems platform."""
+
+from __future__ import annotations
+
+import json
+import os
+import pathlib
+import time
+from typing import List, Optional
+
+import requests
+import typer
+from rich.console import Console
+from rich.progress import Progress, SpinnerColumn, TextColumn
+
+console = Console()
+
+
+def run_command(
+    agent: str = typer.Argument(..., help="Name of the agent to invoke"),
+    payload: str = typer.Argument(
+        ...,
+        help="Inline JSON string or path to a JSON file",
+    ),
+    input_files: List[pathlib.Path] = typer.Option(
+        None,
+        "--input-file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+        help="One or more files to upload alongside the JSON payload (pass multiple paths after --input-file)",
+    ),
+    gateway: str = typer.Option(
+        None,
+        "--gateway",
+        envvar="GATEWAY_BASE_URL",
+        help="Gateway base URL (default http://localhost:8080)",
+    ),
+    poll_interval: float = typer.Option(
+        2.0, "--interval", "-i", help="Seconds between status polls"
+    ),
+    token: Optional[str] = typer.Option(
+        None, "--token", "-t", help="Bearer token for Authorization header"
+    ),
+):
+    """Invoke agent with given JSON payload and stream progress until completion."""
+    gateway_base = gateway or os.getenv("GATEWAY_BASE_URL", "http://localhost:8080")
+    invoke_url = f"{gateway_base.rstrip('/')}/invoke/{agent}"
+
+    # Read JSON payload (inline string or file path)
+    try:
+        if os.path.isfile(payload):
+            payload_data = json.loads(pathlib.Path(payload).read_text(encoding="utf-8"))
+        else:
+            payload_data = json.loads(payload)
+    except Exception as exc:
+        typer.secho(f"Invalid JSON payload: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+
+    headers: dict[str, str] = {}
+    if token:
+        headers["Authorization"] = (
+            f"Bearer {token}" if not token.startswith("Bearer ") else token
+        )
+
+    console.print(f"[cyan]⇢ Invoking {agent}…[/cyan]")
+
+    try:
+        # Handle file uploads if provided
+        files = None
+        if input_files:
+            files = []
+            for filepath in input_files:
+                files.append(
+                    (
+                        "files",
+                        (
+                            filepath.name,
+                            filepath.open("rb"),
+                            "application/octet-stream",
+                        ),
+                    )
+                )
+
+        # Make the invocation request
+        if files:
+            # Multipart request with files
+            response = requests.post(
+                invoke_url,
+                data={"payload": json.dumps(payload_data)},
+                files=files,
+                headers=headers,
+            )
+        else:
+            # JSON request without files
+            headers["Content-Type"] = "application/json"
+            response = requests.post(
+                invoke_url,
+                json=payload_data,
+                headers=headers,
+            )
+
+        response.raise_for_status()
+        invoke_result = response.json()
+
+        thread_id = invoke_result.get("thread_id")
+        if not thread_id:
+            typer.secho("No thread_id in response", fg=typer.colors.RED)
+            raise typer.Exit(code=1)
+
+        console.print(f"[green]✓ Thread ID: {thread_id}[/green]")
+
+        # Poll for status
+        status_url = f"{gateway_base.rstrip('/')}/status/{thread_id}"
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Waiting for completion...", total=None)
+
+            while True:
+                time.sleep(poll_interval)
+
+                status_response = requests.get(status_url, headers=headers)
+                status_response.raise_for_status()
+                status_data = status_response.json()
+
+                state = status_data.get("state", "unknown")
+
+                # Update progress display
+                prog_info = status_data.get("progress", {})
+                desc = prog_info.get("current", state)
+                progress.update(task, description=desc)
+
+                if state == "completed":
+                    break
+                elif state == "failed":
+                    error_msg = status_data.get("error", "Unknown error")
+                    console.print(f"[red]✗ Failed: {error_msg}[/red]")
+                    raise typer.Exit(code=1)
+
+        # Get final result
+        result_url = f"{gateway_base.rstrip('/')}/result/{thread_id}"
+        result_response = requests.get(result_url, headers=headers)
+        result_response.raise_for_status()
+        result_data = result_response.json()
+
+        console.print("[green]✓ Invocation finished[/green]")
+        console.print(json.dumps(result_data.get("result", {}), indent=2))
+
+    except requests.RequestException as exc:
+        typer.secho(f"Request error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    except Exception as exc:
+        typer.secho(f"Unexpected error: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    finally:
+        # Close any open files
+        if input_files:
+            for filepath in input_files:
+                try:
+                    filepath.close()
+                except Exception:
+                    pass
