@@ -26,6 +26,8 @@ def status_command(
 ):
     """List running containers and their state (`docker compose ps`)."""
     ensure_docker_installed()
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_args_list = compose_args(
+        project_dir, langfuse=not no_langfuse
+    )
     cmd = [*compose_args_list, "ps"]
     run_command_with_env(cmd, os.environ.copy())

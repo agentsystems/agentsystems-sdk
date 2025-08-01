@@ -33,7 +33,9 @@ def logs_command(
 ) -> None:
     """Stream (or dump) logs from docker compose services."""
     ensure_docker_installed()
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_args_list = compose_args(
+        project_dir, langfuse=not no_langfuse
+    )
     cmd = [*compose_args_list, "logs"]
     if follow:
         cmd.append("-f")

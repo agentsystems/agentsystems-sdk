@@ -1,4 +1,4 @@
-"""Start the AgentSystems platform."""
+"""Up command for starting the AgentSystems platform."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import subprocess
 import tempfile
 import time
 from enum import Enum
-from typing import Optional
+from typing import Dict, List, Optional
 
 import docker
 import typer
@@ -19,22 +19,59 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ..config import Config
 from ..utils import (
-    ensure_docker_installed,
     compose_args,
-    wait_for_gateway_ready,
+    ensure_docker_installed,
+    ensure_agents_net,
     run_command_with_env,
+    wait_for_gateway_ready,
 )
-from .init import cleanup_init_vars
 
 console = Console()
 
 
 class AgentStartMode(str, Enum):
-    """Agent startup mode options."""
+    """Agent startup modes."""
 
     none = "none"
     create = "create"
     all = "all"
+
+
+def cleanup_init_vars(env_path: pathlib.Path) -> None:
+    """Comment-out one-time LANGFUSE_INIT_* vars after first successful start.
+
+    Args:
+        env_path: Path to .env file
+    """
+    content = env_path.read_text()
+
+    # Check if already cleaned up
+    if (
+        "# --- Langfuse initialization values (no longer used after first start) ---"
+        in content
+    ):
+        return
+
+    lines = content.splitlines()
+    init_lines: list[str] = []
+    other_lines: list[str] = []
+
+    for ln in lines:
+        stripped = ln.lstrip("# ")
+        if stripped.startswith("LANGFUSE_INIT_"):
+            key, _, val = stripped.partition("=")
+            init_lines.append(f"{key}={val}")
+        else:
+            other_lines.append(ln)
+
+    if init_lines:
+        notice = (
+            "# --- Langfuse initialization values (no longer used after first start) ---\n"
+            "# You can remove these lines or keep them for reference.\n"
+        )
+        commented = [f"# {line}" for line in init_lines]
+        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
+        env_path.write_text(new_content)
 
 
 def wait_for_agent_healthy(
@@ -43,33 +80,30 @@ def wait_for_agent_healthy(
     """Wait until container reports healthy or has no HEALTHCHECK.
 
     Args:
-        client: Docker client instance
+        client: Docker client
         name: Container name
-        timeout: Maximum time to wait in seconds
+        timeout: Max wait time in seconds
 
     Returns:
-        True if healthy (or no healthcheck), False on timeout or missing.
+        True if healthy (or no healthcheck), False on timeout
     """
     deadline = time.time() + timeout
-
     while time.time() < deadline:
         try:
-            container = client.containers.get(name)
-
-            # No health check defined
-            if "Health" not in container.attrs["State"]:
+            cont = client.containers.get(name)
+            state = cont.attrs.get("State", {})
+            health = state.get("Health")
+            if not health:
+                return True  # no healthcheck defined → treat as healthy
+            status = health.get("Status")
+            if status == "healthy":
                 return True
-
-            health = container.attrs["State"]["Health"]["Status"]
-            if health == "healthy":
-                return True
-            elif health == "unhealthy":
-                return False
-
-            time.sleep(2)
+            if status == "unhealthy":
+                # keep waiting; could early-exit on consecutive unhealthy
+                pass
         except docker.errors.NotFound:
             return False
-
+        time.sleep(2)
     return False
 
 
@@ -78,86 +112,153 @@ def setup_agents_from_config(
 ) -> None:
     """Login to each enabled registry in an isolated config & start agents.
 
+    We always log in using credentials specified in `.env` / env-vars, never
+    relying on the user's global Docker credentials. A temporary DOCKER_CONFIG
+    directory keeps this session separate so we don't clobber or depend on the
+    operator's normal login state.
+
     Args:
-        cfg: AgentSystems configuration
+        cfg: Config object with agents and registries
         project_dir: Project directory path
         mode: Agent startup mode
     """
-    if mode == AgentStartMode.none:
-        console.print("[yellow]⇒ Skipping agent setup (--agents=none)[/yellow]")
-        return
+    import tempfile
+    from collections import defaultdict
 
-    isolated_docker_config = tempfile.TemporaryDirectory(prefix="agentsystems-agents-")
-    env_isolated = os.environ.copy()
-    env_isolated["DOCKER_CONFIG"] = isolated_docker_config.name
-
-    console.print(f"\n[bold cyan]Setting up {len(cfg.agents)} agent(s)...[/bold cyan]")
-
-    # Process each registry
-    for reg_id, reg in cfg.enabled_registries().items():
-        env_name = f"{reg_id.upper()}_PAT"
-        pat = os.getenv(env_name)
-
-        if not pat:
-            console.print(
-                f"[yellow]⚠ No {env_name} found, skipping {reg_id} login[/yellow]"
-            )
-            continue
-
-        console.print(f"[cyan]⇒ Logging into {reg.url} as {reg.username}[/cyan]")
-
-        # Get password command based on registry type
-        if reg.type == "ghcr":
-            pw_cmd = ["echo", pat]
-        else:
-            # ECR or other registries
-            pw_cmd = reg.password_command.replace("{pat}", pat).split()
-
-        try:
-            proc_pw = subprocess.run(
-                pw_cmd, capture_output=True, text=True, check=True, env=env_isolated
-            )
-            password = proc_pw.stdout.strip()
-        except subprocess.CalledProcessError as e:
-            console.print(f"[red]✗ Password command failed: {e.stderr}[/red]")
-            continue
-
-        # Docker login
-        try:
-            subprocess.run(
-                ["docker", "login", reg.url, "-u", reg.username, "--password-stdin"],
-                input=f"{password}\n".encode(),
-                check=True,
-                env=env_isolated,
-            )
-            console.print(f"[green]✓ Logged into {reg_id}[/green]")
-        except subprocess.CalledProcessError:
-            console.print(f"[red]✗ Login to {reg_id} failed[/red]")
-
-    # Process agents
     client = docker.from_env()
+    ensure_agents_net()
 
+    # Build mapping of registry key -> list[Agent]
+    agents_by_reg: Dict[str, List] = defaultdict(list)
     for agent in cfg.agents:
-        if agent.disabled:
-            console.print(f"[yellow]⇒ Skipping disabled agent: {agent.name}[/yellow]")
-            continue
+        agents_by_reg[agent.registry].append(agent)
 
-        # Pull image
-        console.print(f"[cyan]⇒ Pulling {agent.image}...[/cyan]")
-        try:
+    def _image_exists(ref: str, env: dict) -> bool:
+        """Return True if *ref* image is already present (using given env)."""
+        return (
             subprocess.run(
-                ["docker", "pull", agent.image],
-                check=True,
-                env=env_isolated,
+                ["docker", "image", "inspect", ref],
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-            )
-        except subprocess.CalledProcessError:
-            console.print(f"[red]✗ Failed to pull {agent.image}[/red]")
-            continue
+                env=env,
+            ).returncode
+            == 0
+        )
 
-        # Check if container exists
-        cname = f"agentsystems-{agent.name}-1"
+    # Process each registry and its agents
+    for reg_key, agents_list in agents_by_reg.items():
+        reg = cfg.registries.get(reg_key)
+        if not reg or not reg.enabled:
+            continue  # skip disabled registries
+
+        # Create a fresh Docker config dir so credentials don't clobber
+        with tempfile.TemporaryDirectory(
+            prefix="agentsystems-docker-config-"
+        ) as tmp_cfg:
+            env = os.environ.copy()
+            env["DOCKER_CONFIG"] = tmp_cfg
+
+            # ---- Login --------------------------------------------------
+            method = reg.login_method()
+            if method == "none":
+                console.print(f"[cyan]ℹ︎ {reg.url}: no auth required[/cyan]")
+            elif method == "basic":
+                user = os.getenv(reg.username_env() or "")
+                pw = os.getenv(reg.password_env() or "")
+                if not (user and pw):
+                    not_present = [
+                        a.image for a in agents_list if not _image_exists(a.image, env)
+                    ]
+                    if not not_present:
+                        console.print(
+                            f"[yellow]⚠︎ Skipping login to {reg.url} – credentials missing but images already cached.[/yellow]"
+                        )
+                    else:
+                        console.print(
+                            f"[red]✗ {reg.url}: missing {reg.username_env()}/{reg.password_env()} and images not cached.[/red]"
+                        )
+                        raise typer.Exit(code=1)
+                else:
+                    console.print(
+                        f"[cyan]⇒ logging into {reg.url} (basic auth via {reg.username_env()}/{reg.password_env()})[/cyan]"
+                    )
+                    subprocess.run(
+                        ["docker", "login", reg.url, "-u", user, "--password-stdin"],
+                        input=f"{pw}\n".encode(),
+                        check=True,
+                        env=env,
+                    )
+            elif method in {"bearer", "token"}:
+                token = os.getenv(reg.token_env() or "")
+                if not token:
+                    console.print(
+                        f"[red]✗ {reg.url}: missing {reg.token_env()} in environment.[/red]"
+                    )
+                    raise typer.Exit(code=1)
+                console.print(
+                    f"[cyan]⇒ logging into {reg.url} (token via {reg.token_env()})[/cyan]"
+                )
+                subprocess.run(
+                    [
+                        "docker",
+                        "login",
+                        reg.url,
+                        "--username",
+                        "oauth2",
+                        "--password-stdin",
+                    ],
+                    input=f"{token}\n".encode(),
+                    check=True,
+                    env=env,
+                )
+            else:
+                console.print(
+                    f"[red]✗ {reg.url}: unknown auth method '{method}'.[/red]"
+                )
+                raise typer.Exit(code=1)
+
+            # ---- Pull images -------------------------------------------
+            for agent in agents_list:
+                img = agent.image
+                alt_ref = img.split("/", 1)[1] if "/" in img else img
+                if _image_exists(img, env) or _image_exists(alt_ref, env):
+                    console.print(f"[green]✓ {img} already present.[/green]")
+                    continue
+                console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
+                subprocess.run(["docker", "pull", img], check=True, env=env)
+
+    # Reset env_base for container startup (credentials no longer needed)
+    env_base = os.environ.copy()
+
+    # ------------------------------------------------------------------
+    # 3. Create/start containers based on *mode*
+    if mode == AgentStartMode.none:
+        return
+
+    # Start containers
+    env_file_path = project_dir / ".env"
+    if not env_file_path.exists():
+        console.print(
+            "[yellow]No .env file found – agents will run without extra environment variables.[/yellow]"
+        )
+
+    for agent in cfg.agents:
+        # Derive service/container name from image reference (basename without tag)
+        image_ref = agent.image
+        service_name = image_ref.rsplit("/", 1)[-1].split(":", 1)[0]
+        cname = service_name
+
+        # Remove legacy-named container if it exists (agent-<name>)
+        legacy_name = f"agent-{agent.name}"
+        if legacy_name != cname:
+            try:
+                legacy = client.containers.get(legacy_name)
+                console.print(
+                    f"[yellow]Removing legacy container {legacy_name}…[/yellow]"
+                )
+                legacy.remove(force=True)
+            except docker.errors.NotFound:
+                pass
 
         try:
             client.containers.get(cname)
@@ -168,67 +269,74 @@ def setup_agents_from_config(
         except docker.errors.NotFound:
             pass
 
-        # Create container
-        console.print(f"[cyan]⇒ Creating container for {agent.name}[/cyan]")
-
-        env_vars = agent.environment.copy() if agent.environment else {}
-        env_vars.update(
-            {
-                "LANGFUSE_HOST": os.getenv("LANGFUSE_HOST", "http://langfuse-web:3000"),
-                "LANGFUSE_PUBLIC_KEY": os.getenv("LANGFUSE_PUBLIC_KEY", ""),
-                "LANGFUSE_SECRET_KEY": os.getenv("LANGFUSE_SECRET_KEY", ""),
-            }
-        )
-
-        # Apply env_from patterns
-        if agent.env_from:
-            for pattern in agent.env_from:
-                prefix = pattern.rstrip("*")
-                for k, v in os.environ.items():
-                    if k.startswith(prefix):
-                        env_vars[k] = v
-
         labels = {
             "agent.enabled": "true",
-            "agent.port": str(agent.port),
-            "agent.name": agent.name,
+            "com.docker.compose.project": "local",
+            "com.docker.compose.service": service_name,
         }
+        # agent-specific labels override defaults
+        labels.update(agent.labels)
+        labels.setdefault("agent.port", labels.get("agent.port", "8000"))
 
-        try:
-            container = client.containers.create(
-                agent.image,
-                name=cname,
-                hostname=agent.name,
-                environment=env_vars,
-                labels=labels,
-                network="agents_net",
-                restart_policy={"Name": "unless-stopped"},
-                volumes={
-                    "/var/run/docker.sock": {
-                        "bind": "/var/run/docker.sock",
-                        "mode": "ro",
-                    },
-                    "agentsystems_artifacts": {"bind": "/artifacts", "mode": "rw"},
-                },
-            )
+        expose_ports = agent.overrides.get("expose", [labels["agent.port"]])
+        port = str(expose_ports[0])
 
-            if mode == AgentStartMode.all:
-                container.start()
-                console.print(f"[green]✓ Started {agent.name}[/green]")
+        # Build docker command
+        if mode == AgentStartMode.create:
+            cmd = ["docker", "create"]
+        else:  # mode == AgentStartMode.all
+            cmd = ["docker", "run", "-d"]
 
-                if wait_for_agent_healthy(client, cname):
-                    console.print(f"[green]✓ {cname} ready.[/green]")
-                else:
-                    console.print(
-                        f"[red]✗ {cname} failed health check (timeout).[/red]"
-                    )
+        cmd.extend(
+            [
+                "--restart",
+                "unless-stopped",
+                "--name",
+                cname,
+                "--network",
+                "agents-int",
+                "--env-file",
+                str(env_file_path) if env_file_path.exists() else "/dev/null",
+            ]
+        )
+
+        # labels
+        for k, v in labels.items():
+            cmd.extend(["--label", f"{k}={v}"])
+        # env overrides
+        for k, v in agent.overrides.get("env", {}).items():
+            cmd.extend(["--env", f"{k}={v}"])
+
+        # ----- Artifact volume mounts & env vars --------------------------
+        # Mount full artifacts volume – agent manages its own subdirectories
+        # Artifact permissions are enforced at the application level via agentsystems-config.yml
+        cmd.extend(["--volume", "local_agentsystems-artifacts:/artifacts"])
+
+        # gateway proxy env
+        cmd.extend(
+            [
+                "--env",
+                "HTTP_PROXY=http://gateway:3128",
+                "--env",
+                "HTTPS_PROXY=http://gateway:3128",
+                "--env",
+                "NO_PROXY=gateway,localhost,127.0.0.1",
+            ]
+        )
+        # port mapping (random host port)
+        cmd.extend(["-p", port])
+        # image
+        cmd.append(agent.image)
+
+        console.print(f"[cyan]▶ preparing {cname} ({agent.image})…[/cyan]")
+        subprocess.run(cmd, check=True, env=env_base)
+
+        if mode == AgentStartMode.all:
+            # Wait for health only when container started
+            if wait_for_agent_healthy(client, cname):
+                console.print(f"[green]✓ {cname} ready.[/green]")
             else:
-                console.print(f"[green]✓ Created {agent.name} (stopped)[/green]")
-
-        except docker.errors.APIError as e:
-            console.print(f"[red]✗ Failed to create {agent.name}: {e}[/red]")
-
-    isolated_docker_config.cleanup()
+                console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
 
 
 def up_command(
@@ -278,6 +386,7 @@ def up_command(
 
     Equivalent to the legacy `make up`. Provides convenience flags and polished output.
     """
+
     console.print(
         Panel.fit(
             "🐳 [bold cyan]AgentSystems Platform – up[/bold cyan]",
@@ -292,14 +401,13 @@ def up_command(
     env_base = os.environ.copy()
     env_base["DOCKER_CONFIG"] = isolated_cfg.name
 
-    # Sync environment after loading .env
-    def sync_env_base() -> None:
+    # .env gets loaded later – keep env_base in sync
+    def _sync_env_base() -> None:
         env_base.update(os.environ)
 
     # Optional upfront login to docker.io
     hub_user = os.getenv("DOCKERHUB_USER")
     hub_token = os.getenv("DOCKERHUB_TOKEN")
-
     if hub_user and hub_token:
         console.print(
             "[cyan]⇒ logging into docker.io (basic auth via DOCKERHUB_USER/DOCKERHUB_TOKEN) for compose pull[/cyan]"
@@ -320,12 +428,11 @@ def up_command(
     # Load agentsystems-config.yml if present
     cfg_path = project_dir / "agentsystems-config.yml"
     cfg: Config | None = None
-
     if cfg_path.exists():
         try:
             cfg = Config(cfg_path)
             console.print(
-                f"[cyan]✓ Loaded config ({len(cfg.agents)} agents, {len(cfg.enabled_registries())} registries).[/cyan]"
+                f"[cyan]✓ Loaded config ({len(cfg.agents)} agents, {len(cfg.registries)} registries).[/cyan]"
             )
         except Exception as e:
             typer.secho(f"Error parsing {cfg_path}: {e}", fg=typer.colors.RED)
@@ -337,7 +444,7 @@ def up_command(
         raise typer.Exit(code=1)
 
     # Build compose arguments
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_files = compose_args(project_dir, langfuse=not no_langfuse)
 
     # Require .env unless user supplied --env-file
     env_path = project_dir / ".env"
@@ -355,10 +462,10 @@ def up_command(
     ) as prog:
         if fresh:
             down_task = prog.add_task("Removing previous containers", total=None)
-            run_command_with_env([*compose_args_list, "down", "-v"], env_base)
+            run_command_with_env(compose_files + ["down", "-v"], env_base)
             prog.update(down_task, completed=1)
 
-        up_cmd = [*compose_args_list, "up"]
+        up_cmd = compose_files + ["up"]
         if env_file:
             up_cmd.extend(["--env-file", str(env_file)])
         if detach:
@@ -367,29 +474,30 @@ def up_command(
         prog.add_task("Starting services", total=None)
         run_command_with_env(up_cmd, env_base)
 
-        # Clean up init vars after successful startup
+        # After successful startup, clean up init vars
         target_env_path = env_file if env_file else env_path
         if target_env_path.exists():
             cleanup_init_vars(target_env_path)
-            # Ensure variables are available for CLI
+            # Ensure variables are available for CLI itself
             load_dotenv(dotenv_path=target_env_path, override=False)
-            sync_env_base()
+            _sync_env_base()
 
-    # Setup agents from config if specified
+    # If config specified agents, ensure registries are logged in & images pulled
     if cfg:
+        console.print(
+            f"\n[bold cyan]Setting up {len(cfg.agents)} agent(s)...[/bold cyan]"
+        )
         setup_agents_from_config(cfg, project_dir, agents_mode)
 
-    # Restart gateway to reload agent routes
+    # Restart gateway so it picks up any newly started agents
     console.print("[cyan]↻ restarting gateway to reload agent routes…[/cyan]")
     try:
-        run_command_with_env([*compose_args_list, "restart", "gateway"], env_base)
+        run_command_with_env(compose_files + ["restart", "gateway"], env_base)
     except Exception:
         pass
 
     if detach and wait_ready:
-        # Extract gateway URL from compose file
-        gateway_url = "http://localhost:18080"
-        wait_for_gateway_ready(gateway_url)
+        wait_for_gateway_ready(core_compose)
 
     console.print(
         Panel.fit(
@@ -397,5 +505,5 @@ def up_command(
         )
     )
 
-    # Cleanup temporary Docker config
+    # Cleanup temporary Docker config directory
     isolated_cfg.cleanup()

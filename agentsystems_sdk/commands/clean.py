@@ -34,7 +34,9 @@ def clean_command(
 ) -> None:
     """Fully stop the platform, delete volumes, and prune Docker cache."""
     ensure_docker_installed()
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_args_list = compose_args(
+        project_dir, langfuse=not no_langfuse
+    )
     env = os.environ.copy()
 
     console.print("[cyan]⏻ Removing containers and volumes…[/cyan]")

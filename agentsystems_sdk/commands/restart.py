@@ -49,7 +49,9 @@ def restart_command(
     Useful during development and CI.
     """
     ensure_docker_installed()
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_args_list = compose_args(
+        project_dir, langfuse=not no_langfuse
+    )
     env = os.environ.copy()
 
     # Stop current stack
@@ -66,6 +68,5 @@ def restart_command(
 
     # Optional readiness wait
     if wait_ready and detach:
-        gateway_url = "http://localhost:18080"
-        wait_for_gateway_ready(gateway_url)
+        wait_for_gateway_ready(core_compose)
     console.print("[green]✓ Restart complete.[/green]")
