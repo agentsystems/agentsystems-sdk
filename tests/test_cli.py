@@ -54,8 +54,9 @@ def test_compose_args_basic(tmp_path):
     core = compose_dir / "docker-compose.yml"
     core.write_text("version: '3'\nservices: {}\n")
 
-    args = compose_args(tmp_path, langfuse=False)
-    # compose_args now returns full command list including docker-compose
+    compose_file, args = compose_args(tmp_path, langfuse=False)
+    # compose_args now returns tuple of (compose_file, args)
+    assert compose_file == core
     assert any("docker" in arg for arg in args)  # Has docker or docker-compose
     assert "-f" in args
     assert str(core) in args
@@ -73,8 +74,9 @@ def test_compose_args_with_langfuse(tmp_path):
     lf = lf_dir / "docker-compose.langfuse.yml"
     lf.write_text("version: '3'\nservices: {}\n")
 
-    args = compose_args(tmp_path, langfuse=True)
-    # compose_args now returns full command list
+    compose_file, args = compose_args(tmp_path, langfuse=True)
+    # compose_args now returns tuple of (compose_file, args)
+    assert compose_file == core
     assert "-f" in args
     assert str(core) in args
     assert str(lf) in args
