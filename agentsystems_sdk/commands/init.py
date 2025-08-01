@@ -202,85 +202,91 @@ def init_command(
         BarColumn(style="bright_magenta"),
         TimeElapsedColumn(),
         console=console,
-        transient=True,
     ) as progress:
+        # Clone repository
         clone_task = progress.add_task("Cloning template repo", total=None)
         _display_url = re.sub(r"https://[^@]+@", "https://", clone_repo_url)
 
-        try:
-            run_command(
-                ["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)]
-            )
-        finally:
-            progress.update(clone_task, completed=1)
-
-            # Remove remote origin to avoid accidental pushes to template repo
-            run_command(["git", "-C", str(project_dir), "remote", "remove", "origin"])
-
-            # ---------- Write Langfuse .env ----------
-            env_example = project_dir / ".env.example"
-            env_file = project_dir / ".env"
-            if env_example.exists() and not env_file.exists():
-                shutil.copy(env_example, env_file)
-                env_file = project_dir / ".env"
-            else:
-                env_file = env_file if env_file.exists() else env_example
-
-            cfg_pairs = {
-                "LANGFUSE_INIT_ORG_ID": org_id,
-                "LANGFUSE_INIT_ORG_NAME": org_name,
-                "LANGFUSE_INIT_PROJECT_ID": project_id,
-                "LANGFUSE_INIT_PROJECT_NAME": project_name,
-                "LANGFUSE_INIT_USER_NAME": user_name,
-                "LANGFUSE_INIT_USER_EMAIL": email,
-                "LANGFUSE_INIT_USER_PASSWORD": password,
-                "LANGFUSE_INIT_PROJECT_PUBLIC_KEY": pub_key,
-                "LANGFUSE_INIT_PROJECT_SECRET_KEY": secret_key,
-                # Runtime vars (must be *unquoted* for Docker)
-                "LANGFUSE_HOST": "http://langfuse-web:3000",
-                "LANGFUSE_PUBLIC_KEY": pub_key,
-                "LANGFUSE_SECRET_KEY": secret_key,
-            }
-
-            for k, v in cfg_pairs.items():
-                # Quote only the one-shot INIT vars; runtime vars stay raw
-                value_to_write = f'"{v}"' if k.startswith("LANGFUSE_INIT_") else str(v)
-                set_key(str(env_file), k, value_to_write, quote_mode="never")
-
-            console.print("[green]✓ .env configured.[/green]")
-
-        progress.add_task("Checking Docker", total=None)
-        ensure_docker_installed()
-
-        if docker_token:
-            progress.add_task("Logging into Docker Hub", total=None)
-            docker_login_if_needed(docker_token)
-
-        required_images = get_required_images()
-        pull_task = progress.add_task(
-            "Pulling Docker images", total=len(required_images)
+        run_command(
+            ["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)]
         )
+        progress.update(clone_task, completed=1)
 
-        for img in required_images:
-            progress.update(pull_task, description=f"Pulling {img}")
+        # Remove remote origin to avoid accidental pushes to template repo
+        run_command(["git", "-C", str(project_dir), "remote", "remove", "origin"])
+
+        # ---------- Write Langfuse .env ----------
+        env_example = project_dir / ".env.example"
+        env_file = project_dir / ".env"
+        if env_example.exists() and not env_file.exists():
+            shutil.copy(env_example, env_file)
+            env_file = project_dir / ".env"
+        else:
+            env_file = env_file if env_file.exists() else env_example
+
+        cfg_pairs = {
+            "LANGFUSE_INIT_ORG_ID": org_id,
+            "LANGFUSE_INIT_ORG_NAME": org_name,
+            "LANGFUSE_INIT_PROJECT_ID": project_id,
+            "LANGFUSE_INIT_PROJECT_NAME": project_name,
+            "LANGFUSE_INIT_USER_NAME": user_name,
+            "LANGFUSE_INIT_USER_EMAIL": email,
+            "LANGFUSE_INIT_USER_PASSWORD": password,
+            "LANGFUSE_INIT_PROJECT_PUBLIC_KEY": pub_key,
+            "LANGFUSE_INIT_PROJECT_SECRET_KEY": secret_key,
+            # Runtime vars (must be *unquoted* for Docker)
+            "LANGFUSE_HOST": "http://langfuse-web:3000",
+            "LANGFUSE_PUBLIC_KEY": pub_key,
+            "LANGFUSE_SECRET_KEY": secret_key,
+        }
+
+        for k, v in cfg_pairs.items():
+            # Quote only the one-shot INIT vars; runtime vars stay raw
+            value_to_write = f'"{v}"' if k.startswith("LANGFUSE_INIT_") else str(v)
+            set_key(str(env_file), k, value_to_write, quote_mode="never")
+
+        # Check Docker
+        docker_task = progress.add_task("Checking Docker", total=1)
+        ensure_docker_installed()
+        progress.update(docker_task, completed=1)
+
+        # Docker login if token provided
+        if docker_token:
+            login_task = progress.add_task("Logging into Docker Hub", total=1)
+            progress.stop()  # Stop progress display temporarily
             try:
-                run_command(["docker", "pull", img])
-            except typer.Exit:
-                if docker_token is None and sys.stdin.isatty():
-                    docker_token = typer.prompt(
-                        "Pull failed – provide Docker org token", hide_input=True
-                    )
-                    docker_login_if_needed(docker_token)
-                    run_command(["docker", "pull", img])
-                else:
-                    raise
-            progress.advance(pull_task)
+                docker_login_if_needed(docker_token)
+            finally:
+                progress.start()  # Always restart progress
+            progress.update(login_task, completed=1)
 
-    # Create .env file if it doesn't exist
-    env_example = project_dir / ".env.example"
-    env_file = project_dir / ".env"
-    if env_example.exists() and not env_file.exists():
-        shutil.copy(env_example, env_file)
+        # Pull required images
+        required_images = get_required_images()
+
+        if not required_images:
+            console.print("[yellow]Warning: No images to pull[/yellow]")
+        else:
+            pull_task = progress.add_task(
+                "Pulling Docker images", total=len(required_images)
+            )
+
+            for img in required_images:
+                progress.update(pull_task, description=f"Pulling {img}")
+                progress.stop()  # Stop progress to show docker output
+                try:
+                    run_command(["docker", "pull", img])
+                except typer.Exit:
+                    if docker_token is None and sys.stdin.isatty():
+                        docker_token = typer.prompt(
+                            "Pull failed – provide Docker org token", hide_input=True
+                        )
+                        docker_login_if_needed(docker_token)
+                        run_command(["docker", "pull", img])
+                    else:
+                        raise
+                finally:
+                    progress.start()  # Always restart progress
+                progress.advance(pull_task)
 
     # ---------- Completion message ----------
     display_dir = project_dir.name
