@@ -142,7 +142,7 @@ def compose_args(
     base_path: pathlib.Path,
     *,
     langfuse: bool = True,
-) -> List[str]:
+) -> tuple[pathlib.Path, List[str]]:
     """Build docker-compose command arguments.
 
     Args:
@@ -150,7 +150,7 @@ def compose_args(
         langfuse: Whether to include Langfuse configuration
 
     Returns:
-        List of command arguments for docker-compose
+        Tuple of (core compose file path, list of full compose command args)
     """
     if not COMPOSE_BIN:
         typer.secho(
@@ -179,7 +179,7 @@ def compose_args(
             args.extend(["-f", str(langfuse_file)])
 
     args.extend(["-p", "agentsystems"])
-    return args
+    return compose_file, args
 
 
 def wait_for_gateway_ready(

@@ -83,7 +83,9 @@ def down_command(
         delete_containers = True
 
     # Stop compose services
-    compose_args_list = compose_args(project_dir, langfuse=not no_langfuse)
+    core_compose, compose_args_list = compose_args(
+        project_dir, langfuse=not no_langfuse
+    )
     cmd: list[str] = [*compose_args_list, "down"]
     if delete_volumes:
         cmd.append("-v")
