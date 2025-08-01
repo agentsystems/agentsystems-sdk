@@ -67,38 +67,16 @@ def run_command(
     console.print(f"[cyan]⇢ Invoking {agent}…[/cyan]")
 
     try:
-        # Handle file uploads if provided
-        files = None
         if input_files:
-            files = []
-            for filepath in input_files:
-                files.append(
-                    (
-                        "files",
-                        (
-                            filepath.name,
-                            filepath.open("rb"),
-                            "application/octet-stream",
-                        ),
-                    )
-                )
-
-        # Make the invocation request
-        if files:
-            # Multipart request with files
+            files = [("file", (path.name, open(path, "rb"))) for path in input_files]
+            data = {"json": json.dumps(payload_data)}
             response = requests.post(
-                invoke_url,
-                data={"payload": json.dumps(payload_data)},
-                files=files,
-                headers=headers,
+                invoke_url, files=files, data=data, headers=headers, timeout=60
             )
         else:
-            # JSON request without files
-            headers["Content-Type"] = "application/json"
+            headers.setdefault("Content-Type", "application/json")
             response = requests.post(
-                invoke_url,
-                json=payload_data,
-                headers=headers,
+                invoke_url, json=payload_data, headers=headers, timeout=60
             )
 
         response.raise_for_status()
@@ -111,8 +89,9 @@ def run_command(
 
         console.print(f"[green]✓ Thread ID: {thread_id}[/green]")
 
-        # Poll for status
-        status_url = f"{gateway_base.rstrip('/')}/status/{thread_id}"
+        # Poll for status using the status_url from response
+        status_url = f"{gateway_base.rstrip('/')}{invoke_result.get('status_url')}"  # already contains leading /
+        result_url = f"{gateway_base.rstrip('/')}{invoke_result.get('result_url')}"
 
         with Progress(
             SpinnerColumn(),
@@ -124,32 +103,42 @@ def run_command(
             while True:
                 time.sleep(poll_interval)
 
-                status_response = requests.get(status_url, headers=headers)
-                status_response.raise_for_status()
-                status_data = status_response.json()
+                try:
+                    status_response = requests.get(status_url, headers=headers)
+                    status_response.raise_for_status()
+                    status_data = status_response.json()
+                except Exception as exc:
+                    console.print(f"[red]Status poll failed: {exc}[/red]")
+                    time.sleep(poll_interval)
+                    continue
 
-                state = status_data.get("state", "unknown")
+                state = (
+                    status_data.get("state", "unknown") if status_data else "unknown"
+                )
 
                 # Update progress display
-                prog_info = status_data.get("progress", {})
-                desc = prog_info.get("current", state)
+                prog_info = status_data.get("progress", {}) if status_data else {}
+                desc = prog_info.get("current", state) if prog_info else state
                 progress.update(task, description=desc)
 
                 if state == "completed":
                     break
                 elif state == "failed":
-                    error_msg = status_data.get("error", "Unknown error")
+                    error_msg = (
+                        status_data.get("error", "Unknown error")
+                        if status_data
+                        else "Unknown error"
+                    )
                     console.print(f"[red]✗ Failed: {error_msg}[/red]")
                     raise typer.Exit(code=1)
 
         # Get final result
-        result_url = f"{gateway_base.rstrip('/')}/result/{thread_id}"
         result_response = requests.get(result_url, headers=headers)
         result_response.raise_for_status()
         result_data = result_response.json()
 
-        console.print("[green]✓ Invocation finished[/green]")
-        console.print(json.dumps(result_data.get("result", {}), indent=2))
+        console.print("[green]✓ Invocation finished. Result:[/green]")
+        console.print(json.dumps(result_data, indent=2))
 
     except requests.RequestException as exc:
         typer.secho(f"Request error: {exc}", fg=typer.colors.RED)
