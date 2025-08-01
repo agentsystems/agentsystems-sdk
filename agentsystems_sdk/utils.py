@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import pathlib
 import shutil
 import subprocess
@@ -42,7 +41,7 @@ def run_command(cmd: List[str]) -> None:
         typer.Exit: If the command fails, exits with the same exit code
     """
     try:
-        subprocess.check_call(cmd)
+        subprocess.run(cmd, check=True)
     except subprocess.CalledProcessError as exc:
         typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
         raise typer.Exit(exc.returncode) from exc
@@ -83,17 +82,23 @@ def docker_login_if_needed(token: str | None) -> None:
     """
     if not token:
         return
-
     try:
-        result = subprocess.run(
+        # Use Popen to avoid potential deadlocks with stdin/stdout when progress is active
+        import os
+
+        proc = subprocess.Popen(
             ["docker", "login", "--username", "agentsystems", "--password-stdin"],
-            input=token.encode("utf-8"),
-            capture_output=True,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
+            env=os.environ.copy(),
         )
-        if result.returncode != 0:
+
+        stdout, stderr = proc.communicate(input=token, timeout=30)
+        if proc.returncode != 0:
             typer.secho(
-                f"Docker login failed: {result.stderr}",
+                f"Docker login failed: {stderr}",
                 fg=typer.colors.RED,
             )
             raise typer.Exit(code=1)
@@ -246,16 +251,15 @@ def read_env_file(path: pathlib.Path) -> dict:
 
 
 def get_required_images() -> List[str]:
-    """Get list of required Docker images from environment or defaults.
+    """Get list of required Docker images.
+
+    Central place to keep image list – update when the platform adds new components.
+    Only core platform images; individual agent images are pulled during
+    `agentsystems up` based on the deployment config.
 
     Returns:
         List of Docker image names
     """
-    # Default images
-    images = [
-        os.getenv("AS_CP_IMAGE", "agentsystems/agent-control-plane:stable"),
-        os.getenv("AS_LANGFUSE_IMAGE", "langfuse/langfuse:latest"),
+    return [
+        "agentsystems/agent-control-plane:latest",
     ]
-
-    # Filter out empty values
-    return [img for img in images if img]
