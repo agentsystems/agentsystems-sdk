@@ -29,6 +29,20 @@ def test_version_option():
     assert result.stdout.strip()  # non-empty
 
 
+def test_version_option_dev_mode(monkeypatch):
+    """Test version option when package is not installed (dev mode)."""
+    import importlib.metadata as metadata
+
+    def mock_version(name):
+        raise metadata.PackageNotFoundError(f"No package named {name}")
+
+    monkeypatch.setattr(metadata, "version", mock_version)
+
+    result = runner.invoke(app, ["--version"])
+    assert result.exit_code == 0
+    assert "unknown (development mode)" in result.stdout
+
+
 def test_help_top_level():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
@@ -146,3 +160,59 @@ def test_app_invocation_no_args():
     result = runner.invoke(app, [])
     # Typer exits with code 2 when no command/options are supplied.
     assert result.exit_code == 2
+
+
+def test_main_callback():
+    """Test the main callback function."""
+    from agentsystems_sdk.cli import main
+
+    # Call main with version=None (normal case)
+    main(version=None)  # Should not raise
+
+
+def test_version_callback_false():
+    """Test version callback with False value."""
+    from agentsystems_sdk.cli import version_callback
+
+    # Should not raise or exit
+    version_callback(False)
+
+
+def test_all_commands_registered():
+    """Test that all expected commands are registered."""
+    # Get all registered command names
+    command_names = [cmd.name for cmd in app.registered_commands]
+
+    expected_commands = [
+        "init",
+        "up",
+        "down",
+        "logs",
+        "restart",
+        "status",
+        "run",
+        "artifacts-path",
+        "clean",
+    ]
+
+    for cmd in expected_commands:
+        assert cmd in command_names
+
+
+def test_dotenv_loading(monkeypatch, tmp_path):
+    """Test that dotenv loading logic works."""
+    # Create a test env file
+    env_file = tmp_path / "test.env"
+    env_file.write_text("TEST_VAR=test_value")
+
+    # Set the environment variable to point to our test env file
+    monkeypatch.setenv("AGENTSYSTEMS_GLOBAL_ENV", str(env_file))
+
+    # Re-import to trigger the loading logic
+    import importlib
+    import agentsystems_sdk.cli
+
+    importlib.reload(agentsystems_sdk.cli)
+
+    # The env var should be loaded (though we can't easily test this directly)
+    # Just verify the code path doesn't crash

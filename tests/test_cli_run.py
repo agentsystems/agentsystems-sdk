@@ -430,3 +430,23 @@ def test_run_command_direct_exception_handling():
             )
 
         assert exc_info.value.exit_code == 1
+
+
+def test_run_command_request_exception():
+    """Test run_command handles requests exceptions."""
+    import requests
+
+    with patch("agentsystems_sdk.commands.run.requests.post") as mock_post:
+        mock_post.side_effect = requests.RequestException("Network error")
+
+        with pytest.raises(typer.Exit) as exc_info:
+            run_command(
+                agent="test",
+                payload='{"test": true}',
+                input_files=None,
+                gateway="http://localhost:8080",
+                poll_interval=0.1,
+                token=None,
+            )
+
+        assert exc_info.value.exit_code == 1
