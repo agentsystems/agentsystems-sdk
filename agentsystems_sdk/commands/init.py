@@ -31,48 +31,6 @@ from ..utils import (
 console = Console()
 
 
-def cleanup_init_vars(env_path: pathlib.Path) -> None:
-    """Comment out LANGFUSE_INIT_* variables from .env file after first startup.
-
-    Args:
-        env_path: Path to the .env file
-    """
-    init_vars = [
-        "LANGFUSE_INIT_ORG_ID",
-        "LANGFUSE_INIT_ORG_NAME",
-        "LANGFUSE_INIT_PROJECT_ID",
-        "LANGFUSE_INIT_PROJECT_NAME",
-        "LANGFUSE_INIT_PROJECT_PUBLIC_KEY",
-        "LANGFUSE_INIT_PROJECT_SECRET_KEY",
-        "LANGFUSE_INIT_USER_EMAIL",
-        "LANGFUSE_INIT_USER_NAME",
-        "LANGFUSE_INIT_USER_PASSWORD",
-        "LANGFUSE_INIT_ADMIN_EMAIL",  # Also check older names
-        "LANGFUSE_INIT_ADMIN_PASSWORD",
-    ]
-
-    try:
-        lines = env_path.read_text().splitlines()
-        cleaned_lines = []
-        header_added = False
-
-        for line in lines:
-            if any(line.startswith(f"{var}=") for var in init_vars):
-                if not header_added:
-                    cleaned_lines.append("")
-                    cleaned_lines.append(
-                        "# Langfuse initialization values (used only on first startup)"
-                    )
-                    header_added = True
-                cleaned_lines.append(f"# {line}")
-            else:
-                cleaned_lines.append(line)
-
-        env_path.write_text("\n".join(cleaned_lines) + "\n")
-    except Exception as e:
-        console.print(f"[yellow]Warning: Could not clean init vars: {e}[/yellow]")
-
-
 def init_command(
     project_dir: Optional[pathlib.Path] = typer.Argument(
         None,

@@ -263,3 +263,44 @@ def get_required_images() -> List[str]:
     return [
         "agentsystems/agent-control-plane:latest",
     ]
+
+
+def cleanup_langfuse_init_vars(env_path: pathlib.Path) -> None:
+    """Comment-out one-time LANGFUSE_INIT_* vars after first successful start.
+
+    These initialization variables are only needed on first startup to create
+    the initial Langfuse organization and user. After that, they should be
+    commented out to prevent confusion.
+
+    Args:
+        env_path: Path to the .env file to clean up
+    """
+    content = env_path.read_text()
+
+    # Check if already cleaned up
+    if (
+        "# --- Langfuse initialization values (no longer used after first start) ---"
+        in content
+    ):
+        return
+
+    lines = content.splitlines()
+    init_lines: list[str] = []
+    other_lines: list[str] = []
+
+    for ln in lines:
+        stripped = ln.lstrip("# ")
+        if stripped.startswith("LANGFUSE_INIT_"):
+            key, _, val = stripped.partition("=")
+            init_lines.append(f"{key}={val}")
+        else:
+            other_lines.append(ln)
+
+    if init_lines:
+        notice = (
+            "# --- Langfuse initialization values (no longer used after first start) ---\n"
+            "# You can remove these lines or keep them for reference.\n"
+        )
+        commented = [f"# {line}" for line in init_lines]
+        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
+        env_path.write_text(new_content)

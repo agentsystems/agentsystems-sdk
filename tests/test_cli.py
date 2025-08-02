@@ -13,7 +13,7 @@ from agentsystems_sdk.utils import (
     read_env_file,
     ensure_docker_installed,
 )
-from agentsystems_sdk.commands.init import cleanup_init_vars
+from agentsystems_sdk.utils import cleanup_langfuse_init_vars as cleanup_init_vars
 
 import pytest
 import shutil
