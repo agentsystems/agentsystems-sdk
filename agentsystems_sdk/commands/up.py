@@ -24,6 +24,7 @@ from ..utils import (
     ensure_agents_net,
     run_command_with_env,
     wait_for_gateway_ready,
+    cleanup_langfuse_init_vars,
 )
 
 console = Console()
@@ -35,43 +36,6 @@ class AgentStartMode(str, Enum):
     none = "none"
     create = "create"
     all = "all"
-
-
-def cleanup_init_vars(env_path: pathlib.Path) -> None:
-    """Comment-out one-time LANGFUSE_INIT_* vars after first successful start.
-
-    Args:
-        env_path: Path to .env file
-    """
-    content = env_path.read_text()
-
-    # Check if already cleaned up
-    if (
-        "# --- Langfuse initialization values (no longer used after first start) ---"
-        in content
-    ):
-        return
-
-    lines = content.splitlines()
-    init_lines: list[str] = []
-    other_lines: list[str] = []
-
-    for ln in lines:
-        stripped = ln.lstrip("# ")
-        if stripped.startswith("LANGFUSE_INIT_"):
-            key, _, val = stripped.partition("=")
-            init_lines.append(f"{key}={val}")
-        else:
-            other_lines.append(ln)
-
-    if init_lines:
-        notice = (
-            "# --- Langfuse initialization values (no longer used after first start) ---\n"
-            "# You can remove these lines or keep them for reference.\n"
-        )
-        commented = [f"# {line}" for line in init_lines]
-        new_content = "\n".join(other_lines + ["", notice] + commented) + "\n"
-        env_path.write_text(new_content)
 
 
 def wait_for_agent_healthy(
@@ -477,7 +441,7 @@ def up_command(
         # After successful startup, clean up init vars
         target_env_path = env_file if env_file else env_path
         if target_env_path.exists():
-            cleanup_init_vars(target_env_path)
+            cleanup_langfuse_init_vars(target_env_path)
             # Ensure variables are available for CLI itself
             load_dotenv(dotenv_path=target_env_path, override=False)
             _sync_env_base()

@@ -32,7 +32,16 @@ def clean_command(
         False, "--no-langfuse", help="Disable Langfuse stack during cleanup"
     ),
 ) -> None:
-    """Fully stop the platform, delete volumes, and prune Docker cache."""
+    """Fully stop the platform, delete volumes, and prune Docker cache.
+
+    This is the nuclear option that removes all containers, volumes, and optionally
+    prunes the Docker system to reclaim disk space.
+
+    Args:
+        project_dir: Path to agent-platform-deployments directory
+        prune_system: Whether to run docker system prune
+        no_langfuse: Disable Langfuse stack during cleanup
+    """
     ensure_docker_installed()
     core_compose, compose_args_list = compose_args(
         project_dir, langfuse=not no_langfuse
