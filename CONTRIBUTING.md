@@ -9,7 +9,10 @@ Thanks for helping make the AgentSystems SDK awesome! This guide covers local de
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
+# For reproducible builds, use the lock file:
+pip install -r requirements-dev-lock.txt
+# Or for latest compatible versions:
+# pip install -r requirements-dev.txt
 pre-commit install
 pre-commit run --all-files
 ```

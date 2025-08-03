@@ -12,3 +12,8 @@ __pycache__/
 
 # Test coverage artifact
 .coverage
+.pip-tools-cache/
+
+# Security scan reports
+bandit-report.json
+safety-report.json

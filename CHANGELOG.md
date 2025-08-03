@@ -13,10 +13,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bug report, feature request, and documentation issue templates
 - Test coverage for all CLI commands (clean, logs, restart, status, run, init, down)
 - Improved test coverage for utility functions and progress tracker
+- Dependency lock files for reproducible builds (`requirements-lock.txt`, `requirements-dev-lock.txt`)
+- Automated dependency update workflow (weekly schedule via cron)
+- Security scanning workflow with Bandit and Safety
+- Workflow badges for CI, Security, and Dependencies
 
 ### Changed
 - Enhanced test infrastructure with better mocking strategies
 - Improved error handling test coverage
+- CI/CD now uses lock files for reproducible builds
+- Dependency updates handled automatically via GitHub Actions
 
 ### Fixed
 - Various edge cases now covered by tests
