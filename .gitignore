@@ -12,3 +12,4 @@ __pycache__/
 
 # Test coverage artifact
 .coverage
+.pip-tools-cache/
