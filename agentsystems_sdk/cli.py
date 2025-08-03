@@ -39,7 +39,7 @@ console = Console()
 # Create the main Typer app
 app = typer.Typer(
     name="agentsystems",
-    help="AgentSystems SDK - Deploy and manage AI agent platforms",
+    help="AgentSystems SDK - Deploy and manage multiple AI agent platforms",
     no_args_is_help=True,
     rich_markup_mode="markdown",
     pretty_exceptions_enable=False,
@@ -63,7 +63,7 @@ def main(
         None,
         "--version",
         "-v",
-        help="Show version and exit",
+        help="Show SDK version and exit",
         callback=version_callback,
         is_eager=True,
     ),
