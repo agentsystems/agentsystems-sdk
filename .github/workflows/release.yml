@@ -1,0 +1,260 @@
+name: Release to PyPI
+
+# This workflow automates the release process defined in scripts/release.sh
+# It maintains the same flow: TestPyPI -> Production PyPI
+# Trigger by pushing a tag like v0.2.27
+
+on:
+  push:
+    tags:
+      - 'v*'  # Trigger on version tags created by scripts/release.sh
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (without v prefix, e.g., 0.2.27)'
+        required: true
+      target:
+        description: 'Release target'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+          - testpypi
+          - pypi
+          - both
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      pyproject_version: ${{ steps.pyproject.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git describe
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            # Extract from tag (remove 'v' prefix)
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+
+          # Validate semver format
+          if ! [[ "$VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)([A-Za-z0-9.-]*)?$ ]]; then
+            echo "❌ Invalid semantic version: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Check pyproject.toml version
+        id: pyproject
+        run: |
+          # Extract version from pyproject.toml
+          PYPROJECT_VERSION=$(grep -E "^version = " pyproject.toml | cut -d'"' -f2)
+          echo "version=$PYPROJECT_VERSION" >> $GITHUB_OUTPUT
+          echo "📄 pyproject.toml version: $PYPROJECT_VERSION"
+
+          # Verify they match
+          if [[ "$PYPROJECT_VERSION" != "${{ steps.version.outputs.version }}" ]]; then
+            echo "❌ Version mismatch!"
+            echo "   Tag/Input: ${{ steps.version.outputs.version }}"
+            echo "   pyproject.toml: $PYPROJECT_VERSION"
+            echo "   Please update pyproject.toml before releasing."
+            exit 1
+          fi
+
+          echo "✅ Versions match!"
+
+  build:
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+          pip install -r requirements-dev-lock.txt
+
+      - name: Run tests
+        run: |
+          pytest --cov=agentsystems_sdk --cov-report=term-missing
+          echo "✅ Tests passed"
+
+      - name: Build distribution
+        run: |
+          rm -rf dist/  # Clean any existing builds
+          python -m build --sdist --wheel
+          ls -la dist/
+          echo "✅ Built version ${{ needs.validate-version.outputs.version }}"
+
+      - name: Check distribution
+        run: |
+          twine check dist/*
+          echo "✅ Distribution checks passed"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+          retention-days: 30
+
+  publish-testpypi:
+    needs: [validate-version, build]
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.target == 'testpypi' || github.event.inputs.target == 'both'))
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/agentsystems-sdk/
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - name: Check if version exists on TestPyPI
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          if curl -sf -o /dev/null "https://test.pypi.org/pypi/agentsystems-sdk/$VERSION/json"; then
+            echo "⚠️ Version $VERSION already exists on TestPyPI - skipping upload"
+            echo "skip_upload=true" >> $GITHUB_ENV
+          else
+            echo "✅ Version $VERSION not found on TestPyPI - proceeding with upload"
+            echo "skip_upload=false" >> $GITHUB_ENV
+          fi
+
+      - name: Publish to TestPyPI
+        if: env.skip_upload == 'false'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          user: __token__
+          password: ${{ secrets.TEST_PYPI_TOKEN }}
+          skip-existing: true
+          verbose: true
+
+      - name: Verify installation from TestPyPI
+        if: env.skip_upload == 'false'
+        run: |
+          sleep 10  # Give TestPyPI time to update
+          pip install --index-url https://test.pypi.org/simple/ \
+                      --extra-index-url https://pypi.org/simple/ \
+                      agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+          agentsystems --version
+          echo "✅ Successfully installed from TestPyPI"
+
+  publish-pypi:
+    needs: [validate-version, build, publish-testpypi]
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.target == 'pypi' || github.event.inputs.target == 'both'))
+    environment:
+      name: pypi
+      url: https://pypi.org/project/agentsystems-sdk/
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - name: Check if version exists on PyPI
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          if curl -sf -o /dev/null "https://pypi.org/pypi/agentsystems-sdk/$VERSION/json"; then
+            echo "❌ Version $VERSION already exists on PyPI - aborting"
+            exit 1
+          else
+            echo "✅ Version $VERSION not found on PyPI - proceeding with upload"
+          fi
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
+          verbose: true
+          print-hash: true
+
+      - name: Verify installation from PyPI
+        run: |
+          sleep 10  # Give PyPI time to update
+          pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+          agentsystems --version
+          echo "✅ Successfully installed from PyPI"
+
+  create-github-release:
+    needs: [validate-version, publish-pypi]
+    runs-on: ubuntu-latest
+    if: success() && github.event_name == 'push'
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - name: Extract changelog section
+        id: changelog
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+
+          # Try to extract the section for this version from CHANGELOG.md
+          if [[ -f CHANGELOG.md ]]; then
+            # Extract content between this version and the next version header
+            sed -n "/## \[${VERSION}\]/,/## \[/p" CHANGELOG.md | sed '$d' > release_notes.md || true
+
+            # If nothing found, try without brackets
+            if [[ ! -s release_notes.md ]]; then
+              sed -n "/## ${VERSION}/,/## /p" CHANGELOG.md | sed '$d' > release_notes.md || true
+            fi
+          fi
+
+          # If still nothing, create a generic message
+          if [[ ! -s release_notes.md ]]; then
+            echo "## Release v${VERSION}" > release_notes.md
+            echo "" >> release_notes.md
+            echo "See [CHANGELOG.md](https://github.com/agentsystems/agentsystems-sdk/blob/main/CHANGELOG.md) for details." >> release_notes.md
+          fi
+
+          echo "📝 Release notes:"
+          cat release_notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: v${{ needs.validate-version.outputs.version }}
+          tag_name: v${{ needs.validate-version.outputs.version }}
+          body_path: release_notes.md
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+          draft: false
+          prerelease: ${{ contains(needs.validate-version.outputs.version, 'rc') || contains(needs.validate-version.outputs.version, 'beta') || contains(needs.validate-version.outputs.version, 'alpha') }}
+          fail_on_unmatched_files: false
+          generate_release_notes: true
