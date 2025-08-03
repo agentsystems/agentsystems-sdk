@@ -7,7 +7,7 @@ The AgentSystems **SDK** is a single-install Python package that provides severa
 * `agentsystems` — a polished command-line interface for bootstrapping and operating an AgentSystems deployment.
 * A small helper library (future) so you can embed AgentSystems clients in your own code.
 
-The CLI is designed to work **both interactively** (laptops) and **non-interactively** (CI, cloud VMs, etc.).
+The CLI is designed to work **both interactively** (laptops) and **non-interactively** (CI, cloud VMs, etc...).
 
 
 ## Quick install (via pipx)
