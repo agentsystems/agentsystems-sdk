@@ -54,7 +54,7 @@ def init_command(
         help="Docker Hub Org Access Token for private images",
     ),
 ):
-    """Clone the agent deployment template and pull required Docker images.
+    """Clone the agent deployment template and pull the required Docker images.
 
     Steps:
     1. Clone the `agent-platform-deployments` template repo into *project_dir*.
