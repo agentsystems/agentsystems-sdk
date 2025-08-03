@@ -26,8 +26,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI/CD now uses lock files for reproducible builds
 - Dependency updates handled automatically via GitHub Actions
 
+### Security
+- Removed third-party GitHub Actions that had access to sensitive credentials
+- Replaced pypa/gh-action-pypi-publish with native twine commands for PyPI publishing
+- Replaced softprops/action-gh-release with GitHub CLI for release creation
+- Replaced peter-evans/create-pull-request with GitHub CLI for dependency PRs
+- All critical operations now use first-party tools only (no credential exposure to third parties)
+
 ### Fixed
 - Various edge cases now covered by tests
+- Codecov badge URL corrected in README
 
 ## [0.1.0] - 2024-07-17
 
