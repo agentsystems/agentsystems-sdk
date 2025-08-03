@@ -142,13 +142,16 @@ jobs:
 
       - name: Publish to TestPyPI
         if: env.skip_upload == 'false'
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          user: __token__
-          password: ${{ secrets.TEST_PYPI_TOKEN }}
-          skip-existing: true
-          verbose: true
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
+        run: |
+          pip install twine
+          twine upload --repository-url https://test.pypi.org/legacy/ \
+                       --skip-existing \
+                       --verbose \
+                       dist/*
+          echo "✅ Published to TestPyPI"
 
       - name: Verify installation from TestPyPI
         if: env.skip_upload == 'false'
@@ -188,12 +191,17 @@ jobs:
           fi
 
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          user: __token__
-          password: ${{ secrets.PYPI_TOKEN }}
-          verbose: true
-          print-hash: true
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          pip install twine
+          # Print hashes for security verification
+          echo "📦 Package hashes:"
+          sha256sum dist/*
+
+          twine upload --verbose dist/*
+          echo "✅ Published to PyPI"
 
       - name: Verify installation from PyPI
         run: |
@@ -246,15 +254,25 @@ jobs:
           cat release_notes.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: v${{ needs.validate-version.outputs.version }}
-          tag_name: v${{ needs.validate-version.outputs.version }}
-          body_path: release_notes.md
-          files: |
-            dist/*.whl
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+          TAG="v${VERSION}"
+
+          # Determine if prerelease
+          PRERELEASE=""
+          if [[ "$VERSION" =~ (rc|beta|alpha) ]]; then
+            PRERELEASE="--prerelease"
+          fi
+
+          # Create release with GitHub CLI
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --notes-file release_notes.md \
+            --generate-notes \
+            $PRERELEASE \
+            dist/*.whl \
             dist/*.tar.gz
-          draft: false
-          prerelease: ${{ contains(needs.validate-version.outputs.version, 'rc') || contains(needs.validate-version.outputs.version, 'beta') || contains(needs.validate-version.outputs.version, 'alpha') }}
-          fail_on_unmatched_files: false
-          generate_release_notes: true
+
+          echo "✅ Created GitHub release $TAG"
