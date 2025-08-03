@@ -16,7 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency lock files for reproducible builds (`requirements-lock.txt`, `requirements-dev-lock.txt`)
 - Automated dependency update workflow (weekly schedule via cron)
 - Security scanning workflow with Bandit and Safety
-- Workflow badges for CI, Security, and Dependencies
+- Automated PyPI release workflow for tagged versions
+- Release setup documentation for maintainers
+- Workflow badges for CI, Security, Dependencies, and Release
 
 ### Changed
 - Enhanced test infrastructure with better mocking strategies
