@@ -1,13 +1,13 @@
 # AgentSystems SDK & CLI
 
-[![CI](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml) [![Security](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/security.yml/badge.svg)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/security.yml) [![Dependencies](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/update-dependencies.yml/badge.svg)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/update-dependencies.yml) [![Release](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/release.yml/badge.svg)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/release.yml) [![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/branch/main/graph/badge.svg?token=25Mahs4a96)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
+[![CI](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/graph/badge.svg?token=A6KFU4Y3HP)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
 
 The AgentSystems **SDK** is a single-install Python package that provides several components:
 
 * `agentsystems` — a polished command-line interface for bootstrapping and operating an AgentSystems deployment.
 * A small helper library (future) so you can embed AgentSystems clients in your own code.
 
-The CLI is designed to work **both interactively** (laptops) and **non-interactively** (CI, cloud VMs, etc...).
+The CLI is designed to work **both interactively** (laptops) and **non-interactively** (CI, cloud VMs).
 
 
 ## Quick install (via pipx)
@@ -30,40 +30,15 @@ pipx uninstall agentsystems-sdk  # if previously installed
 pipx install --editable .        # live-reloads on file changes
 ```
 
-### Dependency Management
-
-This project uses lock files for reproducible builds:
-- `requirements-lock.txt` - Locked production dependencies
-- `requirements-dev-lock.txt` - Locked development dependencies (includes testing tools)
-
-To update dependencies:
-```bash
-pip install pip-tools
-pip-compile pyproject.toml -o requirements-lock.txt
-pip-compile requirements-dev.txt pyproject.toml -o requirements-dev-lock.txt
-```
-
 ---
 ## Continuous Integration (GitHub Actions)
 
-Every push and pull request runs several automated workflows:
+Every push and pull request runs `ci.yml` which now goes beyond linting:
 
-### Main CI (`ci.yml`)
-1. Installs dev dependencies from lock files for reproducible builds
-2. Runs pre-commit hooks (ruff, black, shellcheck, hadolint)
-3. Builds the wheel (`python -m build`)
-4. Installs the built wheel into a fresh venv
-5. Runs comprehensive test suite with coverage reporting
-
-### Security Scanning (`security.yml`)
-- **Bandit**: Static security analysis for Python code
-- **Safety**: Checks dependencies for known vulnerabilities
-- Runs on every push, PR, and daily schedule
-
-### Dependency Updates (`update-dependencies.yml`)
-- Automatically updates lock files weekly
-- Creates PRs with updated dependencies
-- Ensures reproducible builds stay current
+1. Installs dev dependencies & runs pre-commit hooks (ruff, black, shellcheck, hadolint).
+2. Builds the wheel (`python -m build`).
+3. Installs the built wheel into a fresh venv.
+4. Runs smoke tests (`agentsystems --version`, `agentsystems info`).
 
 A failing build or test blocks the merge, ensuring every released version installs cleanly.
 

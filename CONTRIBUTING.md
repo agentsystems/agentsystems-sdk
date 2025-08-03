@@ -9,10 +9,7 @@ Thanks for helping make the AgentSystems SDK awesome! This guide covers local de
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-# For reproducible builds, use the lock file:
-pip install -r requirements-dev-lock.txt
-# Or for latest compatible versions:
-# pip install -r requirements-dev.txt
+pip install -r requirements-dev.txt
 pre-commit install
 pre-commit run --all-files
 ```
@@ -96,34 +93,7 @@ The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--p
 ---
 ## 4. Release workflow (branch-based)
 
-Releases can be done manually via `./scripts/release.sh` or automatically via GitHub Actions.
-
-### Automated Release (Recommended for maintainers)
-
-1. Create release branch and bump version:
-   ```bash
-   git checkout -b release/0.2.19
-   # edit pyproject.toml -> version = "0.2.19"
-   git commit -am "chore: bump version to 0.2.19"
-   git push origin release/0.2.19
-   ```
-
-2. Create and push tag:
-   ```bash
-   git tag -a v0.2.19 -m "Release v0.2.19"
-   git push origin v0.2.19
-   ```
-
-3. The GitHub Action will automatically:
-   - Run tests
-   - Build distributions
-   - Publish to TestPyPI
-   - Publish to PyPI (requires approval)
-   - Create GitHub release with artifacts
-
-### Manual Release (Alternative)
-
-The manual script `./scripts/release.sh` **requires** a dedicated `release/<version>` branch and creates the Git tag (`v<version>`) automatically.  Flow:
+Releases are driven by `./scripts/release.sh`.  The script now **requires** a dedicated `release/<version>` branch and creates the Git tag (`v<version>`) automatically.  Flow:
 
 1. **Create a release branch** and bump version:
 
