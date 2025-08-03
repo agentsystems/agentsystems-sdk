@@ -155,8 +155,13 @@ class Config:
 
     # ------------------------------------------------------------------
     def images(self) -> List[str]:
-        """List of full image references for all agents."""
-        return [agent.image for agent in self.agents]
+        """List of full image references for all agents.
+
+        Returns a list of fully qualified container image references
+        for all configured agents.
+        """
+        images_list = [agent.image for agent in self.agents]
+        return images_list
 
     # ------------------------------------------------------------------
     def __repr__(self) -> str:  # pragma: no cover
