@@ -41,7 +41,8 @@ def run_command(cmd: List[str]) -> None:
         typer.Exit: If the command fails, exits with the same exit code
     """
     try:
-        subprocess.run(cmd, check=True)
+        result = subprocess.run(cmd, check=True)
+        return result
     except subprocess.CalledProcessError as exc:
         typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
         raise typer.Exit(exc.returncode) from exc
