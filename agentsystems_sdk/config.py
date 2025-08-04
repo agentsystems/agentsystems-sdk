@@ -150,8 +150,13 @@ class Config:
 
     # ------------------------------------------------------------------
     def enabled_registries(self) -> List[Registry]:
-        """Return registries flagged as enabled."""
-        return [r for r in self.registries.values() if r.enabled]
+        """Return registries flagged as enabled.
+
+        Filters the registries dictionary to return only those
+        with enabled=True.
+        """
+        enabled = [r for r in self.registries.values() if r.enabled]
+        return enabled
 
     # ------------------------------------------------------------------
     def images(self) -> List[str]:

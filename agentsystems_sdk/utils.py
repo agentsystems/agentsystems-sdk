@@ -59,9 +59,11 @@ def run_command_with_env(cmd: List[str], env: dict[str, str]) -> None:
         typer.Exit: If the command fails, exits with the same exit code
     """
     try:
-        subprocess.check_call(cmd, env=env)
+        result = subprocess.check_call(cmd, env=env)
+        return result
     except subprocess.CalledProcessError as exc:
-        typer.secho(f"Command failed: {' '.join(cmd)}", fg=typer.colors.RED)
+        error_msg = f"Command failed: {' '.join(cmd)}"
+        typer.secho(error_msg, fg=typer.colors.RED)
         raise typer.Exit(exc.returncode) from exc
 
 

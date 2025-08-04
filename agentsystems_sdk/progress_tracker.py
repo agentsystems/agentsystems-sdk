@@ -39,19 +39,24 @@ _lock = threading.Lock()
 
 
 def _post(path: str, payload: Dict[str, Any]):
-    """Fire-and-forget POST in a daemon thread (2-second timeout)."""
+    """Fire-and-forget POST in a daemon thread (2-second timeout).
+
+    Sends progress updates asynchronously to avoid blocking the main thread.
+    """
 
     def _worker():
         try:
             headers = {"Content-Type": "application/json"}
             if _auth_header:
                 headers["Authorization"] = _auth_header
-            requests.post(path, json=payload, headers=headers, timeout=2)
+            response = requests.post(path, json=payload, headers=headers, timeout=2)
+            return response
         except Exception:
             # Silently ignore network errors – progress reporting is best-effort.
             pass
 
-    threading.Thread(target=_worker, daemon=True).start()
+    thread = threading.Thread(target=_worker, daemon=True)
+    thread.start()
 
 
 def init(
