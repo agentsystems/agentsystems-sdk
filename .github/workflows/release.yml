@@ -39,10 +39,18 @@ name: Release to PyPI
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: 'Release target (testpypi or pypi)'
+        required: true
+        default: 'testpypi'
+        type: choice
+        options:
+          - 'testpypi'
+          - 'pypi'
       dry_run:
         description: 'Dry run (build only, no upload)'
         required: true
-        default: 'true'
+        default: 'false'
         type: choice
         options:
           - 'true'
@@ -116,9 +124,9 @@ jobs:
           path: dist/
           retention-days: 7
 
-  # TestPyPI release (always runs first for safety)
+  # TestPyPI release
   release-test:
-    if: ${{ github.event.inputs.dry_run != 'true' }}
+    if: ${{ github.event.inputs.dry_run != 'true' && github.event.inputs.target == 'testpypi' }}
     needs: [validate-version, build]
     runs-on: ubuntu-latest
     environment: testpypi  # Requires environment approval if configured
@@ -141,10 +149,10 @@ jobs:
       - name: Upload to TestPyPI
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_API_TOKEN }}
         run: |
           if [[ -z "$TWINE_PASSWORD" ]]; then
-            echo "❌ TEST_PYPI_TOKEN secret not configured"
+            echo "❌ TEST_PYPI_API_TOKEN secret not configured"
             echo "See .github/RELEASE_SETUP.md for setup instructions"
             exit 1
           fi
@@ -165,10 +173,10 @@ jobs:
           agentsystems --version
           python -c "import agentsystems_sdk; print(f'✅ Version {agentsystems_sdk.__version__} installed successfully')"
 
-  # Production PyPI release (requires TestPyPI success)
+  # Production PyPI release
   release-prod:
-    if: ${{ github.event.inputs.dry_run != 'true' }}
-    needs: [validate-version, build, release-test]
+    if: ${{ github.event.inputs.dry_run != 'true' && github.event.inputs.target == 'pypi' }}
+    needs: [validate-version, build]
     runs-on: ubuntu-latest
     environment: pypi  # Requires environment approval
     steps:
@@ -190,10 +198,10 @@ jobs:
       - name: Upload to PyPI
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           if [[ -z "$TWINE_PASSWORD" ]]; then
-            echo "❌ PYPI_TOKEN secret not configured"
+            echo "❌ PYPI_API_TOKEN secret not configured"
             echo "See .github/RELEASE_SETUP.md for setup instructions"
             exit 1
           fi
@@ -226,7 +234,7 @@ jobs:
   # Summary job for workflow status
   summary:
     if: always()
-    needs: [validate-version, build, release-test, release-prod]
+    needs: [validate-version, build]
     runs-on: ubuntu-latest
     steps:
       - name: Summary
@@ -236,6 +244,8 @@ jobs:
 
           if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
             echo "🔧 **Dry Run Mode** - No packages were uploaded" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "🎯 **Target**: ${{ github.event.inputs.target }}" >> $GITHUB_STEP_SUMMARY
           fi
 
           echo "### Job Status" >> $GITHUB_STEP_SUMMARY
@@ -243,6 +253,9 @@ jobs:
           echo "- Build: ${{ needs.build.result }} ✅" >> $GITHUB_STEP_SUMMARY
 
           if [[ "${{ github.event.inputs.dry_run }}" != "true" ]]; then
-            echo "- TestPyPI: ${{ needs.release-test.result }}" >> $GITHUB_STEP_SUMMARY
-            echo "- PyPI: ${{ needs.release-prod.result }}" >> $GITHUB_STEP_SUMMARY
+            if [[ "${{ github.event.inputs.target }}" == "testpypi" ]]; then
+              echo "- TestPyPI Release: Check job status above" >> $GITHUB_STEP_SUMMARY
+            elif [[ "${{ github.event.inputs.target }}" == "pypi" ]]; then
+              echo "- PyPI Release: Check job status above" >> $GITHUB_STEP_SUMMARY
+            fi
           fi
