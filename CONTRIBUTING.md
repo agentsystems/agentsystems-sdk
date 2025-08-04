@@ -91,14 +91,42 @@ The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--p
 * Update `NOTICE` when adding new runtime dependencies (license + copyright).
 
 ---
-## 4. Release workflow (branch-based)
+## 4. Release workflow
 
-### Automated Release (GitHub Actions) - CURRENTLY DISABLED
+### Automated Release (GitHub Actions) - RECOMMENDED
 
-We have a GitHub Actions workflow for automated PyPI releases, but it's currently disabled for safety.
-To enable it, see `.github/RELEASE_SETUP.md` for setup instructions.
+We use GitHub Actions for automated PyPI releases with a two-step safety process:
 
-### Manual Release
+1. **Create release branch and bump version**:
+   ```bash
+   git checkout -b release/X.Y.Z
+   # Edit pyproject.toml -> version = "X.Y.Z"
+   git commit -am "chore: bump version to X.Y.Z"
+   git push -u origin release/X.Y.Z
+   ```
+
+2. **Create PR** (but don't merge yet) and wait for CI tests
+
+3. **Release to TestPyPI** (from Actions tab):
+   - Branch: `release/X.Y.Z`
+   - Target: `testpypi`
+   - Dry run: `false`
+
+4. **Test the release**:
+   ```bash
+   pip install --index-url https://test.pypi.org/simple/ \
+        --extra-index-url https://pypi.org/simple/ \
+        agentsystems-sdk==X.Y.Z
+   agentsystems --version
+   ```
+
+5. **If tests pass**: Merge PR, then release to PyPI:
+   - Target: `pypi`
+   - Dry run: `false`
+
+See `.github/RELEASE_SETUP.md` for detailed setup instructions.
+
+### Manual Release (Alternative)
 
 Releases are driven by `./scripts/release.sh`.  The script now **requires** a dedicated `release/<version>` branch and creates the Git tag (`v<version>`) automatically.  Flow:
 
