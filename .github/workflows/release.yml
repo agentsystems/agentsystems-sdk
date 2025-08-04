@@ -1,0 +1,248 @@
+name: Release to PyPI
+
+# This workflow automates the release process to PyPI
+# CURRENTLY DISABLED - See .github/RELEASE_SETUP.md for setup instructions
+#
+# Once configured, it will:
+# 1. Validate version consistency
+# 2. Build the package
+# 3. Test release to TestPyPI
+# 4. Release to production PyPI (with approval)
+
+# ⚠️ IMPORTANT: This workflow is DISABLED by default for safety
+# To enable:
+# 1. Set up PyPI and TestPyPI accounts
+# 2. Add secrets: PYPI_TOKEN and TEST_PYPI_TOKEN
+# 3. Configure GitHub environments (testpypi, pypi)
+# 4. Uncomment the 'on:' section below
+
+# on:
+#   push:
+#     tags:
+#       - 'v*'  # Trigger on version tags
+#   workflow_dispatch:
+#     inputs:
+#       version:
+#         description: 'Version to release (without v prefix, e.g., 0.2.27)'
+#         required: true
+#       target:
+#         description: 'Release target'
+#         required: true
+#         default: 'testpypi'
+#         type: choice
+#         options:
+#           - testpypi
+#           - pypi
+#           - both
+
+# Temporarily enabled only for manual workflow_dispatch to prevent accidental releases
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build only, no upload)'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+jobs:
+  validate-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      pyproject_version: ${{ steps.pyproject.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history for git describe
+
+      - name: Extract version
+        id: version
+        run: |
+          # For now, extract from pyproject.toml
+          VERSION=$(grep "^version = " pyproject.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "📦 Version: $VERSION"
+
+      - name: Extract pyproject version
+        id: pyproject
+        run: |
+          VERSION=$(grep "^version = " pyproject.toml | cut -d'"' -f2)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Verify version consistency
+        run: |
+          if [[ "${{ steps.version.outputs.version }}" != "${{ steps.pyproject.outputs.version }}" ]]; then
+            echo "❌ Version mismatch!"
+            echo "Tag version: ${{ steps.version.outputs.version }}"
+            echo "pyproject.toml: ${{ steps.pyproject.outputs.version }}"
+            exit 1
+          fi
+          echo "✅ Version check passed: ${{ steps.version.outputs.version }}"
+
+  build:
+    needs: validate-version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install build twine
+
+      - name: Build package
+        run: |
+          python -m build
+          echo "📦 Package built successfully"
+          ls -la dist/
+
+      - name: Check package with twine
+        run: |
+          twine check dist/*
+          echo "✅ Package validation passed"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+          retention-days: 7
+
+  # TestPyPI release (always runs first for safety)
+  release-test:
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    needs: [validate-version, build]
+    runs-on: ubuntu-latest
+    environment: testpypi  # Requires environment approval if configured
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install twine
+        run: pip install twine
+
+      - name: Upload to TestPyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
+        run: |
+          if [[ -z "$TWINE_PASSWORD" ]]; then
+            echo "❌ TEST_PYPI_TOKEN secret not configured"
+            echo "See .github/RELEASE_SETUP.md for setup instructions"
+            exit 1
+          fi
+
+          twine upload --repository testpypi dist/*
+          echo "✅ Released to TestPyPI"
+          echo "View at: https://test.pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/"
+
+      - name: Test installation from TestPyPI
+        run: |
+          python -m venv test-env
+          source test-env/bin/activate
+          pip install --index-url https://test.pypi.org/simple/ \
+               --extra-index-url https://pypi.org/simple/ \
+               agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+
+          # Verify it works
+          agentsystems --version
+          python -c "import agentsystems_sdk; print(f'✅ Version {agentsystems_sdk.__version__} installed successfully')"
+
+  # Production PyPI release (requires TestPyPI success)
+  release-prod:
+    if: ${{ github.event.inputs.dry_run != 'true' }}
+    needs: [validate-version, build, release-test]
+    runs-on: ubuntu-latest
+    environment: pypi  # Requires environment approval
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-${{ needs.validate-version.outputs.version }}
+          path: dist/
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install twine
+        run: pip install twine
+
+      - name: Upload to PyPI
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          if [[ -z "$TWINE_PASSWORD" ]]; then
+            echo "❌ PYPI_TOKEN secret not configured"
+            echo "See .github/RELEASE_SETUP.md for setup instructions"
+            exit 1
+          fi
+
+          twine upload dist/*
+          echo "✅ Released to PyPI"
+          echo "View at: https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.validate-version.outputs.version }}
+          name: Release v${{ needs.validate-version.outputs.version }}
+          body: |
+            ## AgentSystems SDK v${{ needs.validate-version.outputs.version }}
+
+            ### Installation
+            ```bash
+            pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+            ```
+
+            ### Links
+            - [PyPI Package](https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/)
+            - [Changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+
+          files: dist/*
+          draft: false
+          prerelease: false
+
+  # Summary job for workflow status
+  summary:
+    if: always()
+    needs: [validate-version, build, release-test, release-prod]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summary
+        run: |
+          echo "## Release Summary for v${{ needs.validate-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "🔧 **Dry Run Mode** - No packages were uploaded" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "### Job Status" >> $GITHUB_STEP_SUMMARY
+          echo "- Validation: ${{ needs.validate-version.result }} ✅" >> $GITHUB_STEP_SUMMARY
+          echo "- Build: ${{ needs.build.result }} ✅" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ github.event.inputs.dry_run }}" != "true" ]]; then
+            echo "- TestPyPI: ${{ needs.release-test.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "- PyPI: ${{ needs.release-prod.result }}" >> $GITHUB_STEP_SUMMARY
+          fi

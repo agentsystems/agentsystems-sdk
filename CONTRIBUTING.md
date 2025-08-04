@@ -93,6 +93,13 @@ The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--p
 ---
 ## 4. Release workflow (branch-based)
 
+### Automated Release (GitHub Actions) - CURRENTLY DISABLED
+
+We have a GitHub Actions workflow for automated PyPI releases, but it's currently disabled for safety.
+To enable it, see `.github/RELEASE_SETUP.md` for setup instructions.
+
+### Manual Release
+
 Releases are driven by `./scripts/release.sh`.  The script now **requires** a dedicated `release/<version>` branch and creates the Git tag (`v<version>`) automatically.  Flow:
 
 1. **Create a release branch** and bump version:
