@@ -208,6 +208,8 @@ jobs:
     needs: [validate-version, build]
     runs-on: ubuntu-latest
     environment: pypi  # Requires environment approval
+    permissions:
+      contents: write  # Required to create releases and push tags
     steps:
       - uses: actions/checkout@v4
 
@@ -266,25 +268,31 @@ jobs:
           deactivate
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ needs.validate-version.outputs.version }}
-          name: Release v${{ needs.validate-version.outputs.version }}
-          body: |
-            ## AgentSystems SDK v${{ needs.validate-version.outputs.version }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create git tag if it doesn't exist
+          TAG="v${{ needs.validate-version.outputs.version }}"
+          if ! git tag | grep -q "^${TAG}$"; then
+            git tag -a "${TAG}" -m "Release ${TAG}"
+            git push origin "${TAG}"
+          fi
 
-            ### Installation
-            ```bash
-            pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
-            ```
+          # Create release using GitHub CLI (built into runners)
+          gh release create "${TAG}" \
+            --title "Release ${TAG}" \
+            --notes "## AgentSystems SDK ${{ needs.validate-version.outputs.version }}
 
-            ### Links
-            - [PyPI Package](https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/)
-            - [Changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+### Installation
+\`\`\`bash
+pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+\`\`\`
 
-          files: dist/*
-          draft: false
-          prerelease: false
+### Links
+- [PyPI Package](https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/)
+- [Changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
+" \
+            dist/*
 
   # Summary job for workflow status
   summary:
