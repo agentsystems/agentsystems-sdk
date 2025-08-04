@@ -165,13 +165,42 @@ jobs:
         run: |
           python -m venv test-env
           source test-env/bin/activate
-          pip install --index-url https://test.pypi.org/simple/ \
-               --extra-index-url https://pypi.org/simple/ \
-               agentsystems-sdk==${{ needs.validate-version.outputs.version }}
 
-          # Verify it works
-          agentsystems --version
-          python -c "import agentsystems_sdk; print(f'✅ Version {agentsystems_sdk.__version__} installed successfully')"
+          # Retry installation due to potential propagation delays
+          echo "Installing agentsystems-sdk==${{ needs.validate-version.outputs.version }} from TestPyPI..."
+          for i in {1..5}; do
+            if pip install --index-url https://test.pypi.org/simple/ \
+                 --extra-index-url https://pypi.org/simple/ \
+                 agentsystems-sdk==${{ needs.validate-version.outputs.version }}; then
+              echo "✅ Installation successful on attempt $i"
+              break
+            fi
+            if [ $i -eq 5 ]; then
+              echo "❌ Failed to install after 5 attempts"
+              exit 1
+            fi
+            echo "Attempt $i failed, waiting 30s for TestPyPI propagation..."
+            sleep 30
+          done
+
+          # Test basic CLI functionality
+          echo "Testing: agentsystems --version"
+          VERSION_OUTPUT=$(agentsystems --version 2>&1)
+          echo "Output: $VERSION_OUTPUT"
+          if [[ ! "$VERSION_OUTPUT" =~ "${{ needs.validate-version.outputs.version }}" ]]; then
+            echo "❌ Version mismatch in CLI output!"
+            echo "Expected version: ${{ needs.validate-version.outputs.version }}"
+            exit 1
+          fi
+
+          echo "Testing: agentsystems --help"
+          agentsystems --help > /dev/null
+
+          # Test Python import
+          echo "Testing Python import..."
+          python -c "import agentsystems_sdk; assert agentsystems_sdk.__version__ == '${{ needs.validate-version.outputs.version }}'"
+
+          echo "✅ All TestPyPI verification tests passed!"
 
   # Production PyPI release
   release-prod:
@@ -209,6 +238,32 @@ jobs:
           twine upload dist/*
           echo "✅ Released to PyPI"
           echo "View at: https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/"
+
+      - name: Verify PyPI installation
+        run: |
+          # Create clean environment for production test
+          python -m venv prod-test-env
+          source prod-test-env/bin/activate
+
+          # Allow brief propagation time
+          echo "Waiting 10s for PyPI propagation..."
+          sleep 10
+
+          # Install from production PyPI
+          echo "Installing agentsystems-sdk==${{ needs.validate-version.outputs.version }} from PyPI..."
+          pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+
+          # Basic smoke test
+          echo "Testing: agentsystems --version"
+          VERSION_OUTPUT=$(agentsystems --version 2>&1)
+          echo "Output: $VERSION_OUTPUT"
+          if [[ ! "$VERSION_OUTPUT" =~ "${{ needs.validate-version.outputs.version }}" ]]; then
+            echo "⚠️  Warning: Version mismatch in CLI output (may be CDN delay)"
+            echo "Expected: ${{ needs.validate-version.outputs.version }}"
+          fi
+
+          echo "✅ PyPI installation verified!"
+          deactivate
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1

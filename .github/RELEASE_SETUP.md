@@ -6,7 +6,7 @@ This document describes how to set up automated releases to PyPI for the AgentSy
 
 Configure these secrets in your GitHub repository settings under **Settings → Secrets and variables → Actions**:
 
-### 1. `TEST_PYPI_TOKEN`
+### 1. `TEST_PYPI_API_TOKEN`
 - **Purpose**: Authentication token for TestPyPI uploads
 - **How to obtain**:
   1. Create account at https://test.pypi.org
@@ -15,7 +15,7 @@ Configure these secrets in your GitHub repository settings under **Settings → 
   4. Copy the token (starts with `pypi-`)
   5. Add as repository secret
 
-### 2. `PYPI_TOKEN`
+### 2. `PYPI_API_TOKEN`
 - **Purpose**: Authentication token for production PyPI uploads
 - **How to obtain**:
   1. Create account at https://pypi.org
@@ -45,11 +45,51 @@ The workflow uses GitHub Environments for additional protection:
 
 ## Testing the Workflow
 
-### Manual Test (Workflow Dispatch)
+### Manual Release (Workflow Dispatch)
+
+The workflow uses a two-step release process for safety:
+
 1. Go to **Actions → Release to PyPI**
 2. Click "Run workflow"
-3. Enter version and select target (testpypi/pypi/both)
+3. Select options:
+   - **Branch**: Your release branch (e.g., `release/0.2.27`)
+   - **Release target**:
+     - `testpypi` - Release to TestPyPI only (for testing)
+     - `pypi` - Release to production PyPI only (after TestPyPI validation)
+   - **Dry run**:
+     - `true` - Build only, no upload
+     - `false` - Build and upload
 4. Monitor the workflow execution
+
+**Important**: There is no "both" option. You must:
+1. First run with `target: testpypi` to validate
+2. Then run with `target: pypi` after testing
+
+## Recommended Release Process
+
+1. **Create release branch**:
+   ```bash
+   git checkout -b release/X.Y.Z
+   # Update version in pyproject.toml
+   git commit -am "chore: bump version to X.Y.Z"
+   git push -u origin release/X.Y.Z
+   ```
+
+2. **Create PR** (but don't merge yet)
+
+3. **Release to TestPyPI**:
+   - Run workflow from release branch
+   - Target: `testpypi`
+   - Test the package thoroughly
+
+4. **If TestPyPI passes**:
+   - Merge PR to main
+   - Run workflow again with target: `pypi`
+
+5. **If TestPyPI fails**:
+   - Fix issues on release branch
+   - Re-run TestPyPI release
+   - Only merge after success
 
 ### Automated Test (Tag Push)
 1. Create a release branch:
@@ -67,13 +107,16 @@ The workflow uses GitHub Environments for additional protection:
 
 ## Workflow Features
 
-- **Version validation**: Ensures git tag matches pyproject.toml version
-- **Duplicate prevention**: Checks if version already exists on PyPI
-- **Test stage**: Always publishes to TestPyPI first
-- **Production approval**: Requires environment approval for PyPI
-- **Artifact retention**: Keeps built distributions for 30 days
-- **GitHub Release**: Automatically creates release with changelog
-- **Installation verification**: Tests that package can be installed after upload
+- **Two-step release process**: Separate TestPyPI and PyPI releases for safety
+- **Version validation**: Ensures consistency across pyproject.toml
+- **Duplicate prevention**: Checks if version already exists on target index
+- **Installation verification**:
+  - TestPyPI: Retry logic for propagation delays, comprehensive CLI tests
+  - PyPI: Basic smoke test after upload
+- **Production approval**: Optional environment protection for PyPI
+- **Artifact retention**: Keeps built distributions for 7 days
+- **GitHub Release**: Automatically creates release with tag `vX.Y.Z`
+- **Automatic testing**: Verifies `--version` and `--help` commands work
 
 ## Troubleshooting
 
