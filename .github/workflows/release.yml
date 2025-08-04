@@ -289,14 +289,14 @@ PyPI: https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outpu
 Changelog: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md" \
             dist/*
 
-  # Summary job for workflow status
-  summary:
-    if: always()
-    needs: [validate-version, build]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Summary
-        run: |
+# Summary job for workflow status
+summary:
+  if: always()
+  needs: [validate-version, build]
+  runs-on: ubuntu-latest
+  steps:
+    - name: Summary
+      run: |
           echo "## Release Summary for v${{ needs.validate-version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
