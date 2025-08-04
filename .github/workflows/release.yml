@@ -281,17 +281,12 @@ jobs:
           # Create release using GitHub CLI (built into runners)
           gh release create "${TAG}" \
             --title "Release ${TAG}" \
-            --notes "## AgentSystems SDK ${{ needs.validate-version.outputs.version }}
+            --notes "AgentSystems SDK ${{ needs.validate-version.outputs.version }}
 
-### Installation
-\`\`\`bash
-pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
-\`\`\`
+Install: pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
 
-### Links
-- [PyPI Package](https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/)
-- [Changelog](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md)
-" \
+PyPI: https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/
+Changelog: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md" \
             dist/*
 
   # Summary job for workflow status
