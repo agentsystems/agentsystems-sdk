@@ -1,0 +1,12 @@
+# Configuration for issue templates
+blank_issues_enabled: true
+contact_links:
+  - name: 💬 Community Discussions
+    url: https://github.com/agentsystems/agentsystems-sdk/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 📖 Documentation
+    url: https://docs.agentsystems.dev
+    about: Check out the official documentation
+  - name: 🔒 Security Issues
+    url: https://github.com/agentsystems/agentsystems-sdk/security/policy
+    about: Please report security vulnerabilities according to our security policy
