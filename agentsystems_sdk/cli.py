@@ -1,4 +1,4 @@
-"""Command-line interface for AgentSystems SDK.
+"""Command-line interface for the AgentSystems SDK.
 
 Run `agentsystems --help` after installing to view available commands.
 """
