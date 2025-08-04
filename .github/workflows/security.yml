@@ -1,0 +1,95 @@
+name: Security Scan
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Run daily at 2am UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install bandit[toml] safety
+
+      - name: Run Bandit security scan
+        run: |
+          # Run bandit and capture exit code (it exits 1 if any issues found)
+          bandit -r agentsystems_sdk -f json -o bandit-report.json || true
+
+          echo "## Bandit Security Scan Results" >> $GITHUB_STEP_SUMMARY
+
+          # Parse results and create summary
+          python -c "
+          import json
+          import sys
+
+          with open('bandit-report.json') as f:
+              data = json.load(f)
+
+          metrics = data['metrics']['_totals']
+          high_issues = [r for r in data['results'] if r['issue_severity'] == 'HIGH']
+          medium_issues = [r for r in data['results'] if r['issue_severity'] == 'MEDIUM']
+
+          print(f\"- **High severity**: {metrics.get('SEVERITY.HIGH', 0)} issues\")
+          print(f\"- **Medium severity**: {metrics.get('SEVERITY.MEDIUM', 0)} issues\")
+          print(f\"- **Low severity**: {metrics.get('SEVERITY.LOW', 0)} issues\")
+
+          if high_issues:
+              print('\n### ❌ High Severity Issues Found!')
+              for issue in high_issues[:5]:  # Show first 5
+                  print(f\"- {issue['issue_text']} at {issue['filename']}:{issue['line_number']}\")
+              sys.exit(1)
+          elif medium_issues:
+              print('\n### ⚠️ Medium Severity Issues')
+              for issue in medium_issues[:5]:
+                  print(f\"- {issue['issue_text']} at {issue['filename']}:{issue['line_number']}\")
+              print('\n✅ No high severity issues found')
+          else:
+              print('\n✅ No high or medium severity issues found')
+          " >> $GITHUB_STEP_SUMMARY
+
+      - name: Check dependency vulnerabilities with Safety
+        run: |
+          echo "## Safety Dependency Scan" >> $GITHUB_STEP_SUMMARY
+
+          # Run safety check and capture output
+          if safety check --json > safety-report.json 2>&1; then
+            echo "✅ No known vulnerabilities found in dependencies" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Vulnerabilities found in dependencies:" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat safety-report.json | python -m json.tool | head -50 >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+
+            # Don't fail the build for known vulnerabilities, just warn
+            echo "::warning::Dependency vulnerabilities detected. Please review the Safety report."
+          fi
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-scan-results
+          path: |
+            bandit-report.json
+            safety-report.json
+
+      - name: SAST with CodeQL (if enabled)
+        uses: github/codeql-action/analyze@v2
+        if: github.repository == 'agentsystems/agentsystems-sdk'
+        continue-on-error: true

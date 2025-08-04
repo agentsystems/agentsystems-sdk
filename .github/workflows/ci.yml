@@ -34,6 +34,29 @@ jobs:
           import agentsystems_sdk, sys; print(agentsystems_sdk.__version__); sys.exit(0)
           PY
 
+      - name: Generate lock files for reproducibility
+        run: |
+          echo "# Auto-generated lock file - DO NOT USE IN CI" > requirements-lock.txt
+          echo "# Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> requirements-lock.txt
+          echo "# Python: $(python --version)" >> requirements-lock.txt
+          echo "" >> requirements-lock.txt
+          pip freeze | grep -v "^agentsystems-sdk" | grep -v "^-e " >> requirements-lock.txt || true
+
+          echo "# Auto-generated lock file - DO NOT USE IN CI" > requirements-dev-lock.txt
+          echo "# Generated: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> requirements-dev-lock.txt
+          echo "# Python: $(python --version)" >> requirements-dev-lock.txt
+          echo "" >> requirements-dev-lock.txt
+          pip freeze >> requirements-dev-lock.txt || true
+
+      - name: Upload lock files as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-lock-files
+          path: |
+            requirements-lock.txt
+            requirements-dev-lock.txt
+          retention-days: 90
+
       - name: Run tests
         run: pytest --cov=agentsystems_sdk --cov-branch --cov-report=xml
 

@@ -12,3 +12,7 @@ __pycache__/
 
 # Test coverage artifact
 .coverage
+
+# Auto-generated lock files (stored as CI artifacts, not in repo)
+requirements-lock.txt
+requirements-dev-lock.txt
