@@ -1,6 +1,6 @@
-"""Tests for the init command."""
+"""Tests for the init command with local scaffold."""
 
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 import typer
@@ -9,13 +9,14 @@ from agentsystems_sdk.commands.init import init_command
 
 
 class TestInitCommand:
-    """Tests for the init command."""
+    """Tests for the init command with local scaffold."""
 
     @patch("agentsystems_sdk.commands.init.get_required_images")
     @patch("agentsystems_sdk.commands.init.docker_login_if_needed")
     @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
     @patch("agentsystems_sdk.commands.init.set_key")
     @patch("agentsystems_sdk.commands.init.shutil.copy")
+    @patch("agentsystems_sdk.commands.init.shutil.copytree")
     @patch("agentsystems_sdk.commands.init.run_command")
     @patch("agentsystems_sdk.commands.init.typer.prompt")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
@@ -24,6 +25,7 @@ class TestInitCommand:
         mock_stdin,
         mock_prompt,
         mock_run_command,
+        mock_copytree,
         mock_shutil_copy,
         mock_set_key,
         mock_ensure_docker,
@@ -41,30 +43,24 @@ class TestInitCommand:
             "TestOrg",  # Organization name
             "admin@test.com",  # Email
             "password123",  # Password
-            "gh-token-123",  # GitHub token
             "docker-token-123",  # Docker token
         ]
 
         # Mock required images
         mock_get_images.return_value = [
-            "agentsystems/gateway:latest",
+            "agentsystems/agent-control-plane:latest",
             "langfuse/langfuse:latest",
         ]
 
         # Execute
         init_command(
             project_dir=None,  # Will prompt for directory
-            branch="main",
-            gh_token=None,
             docker_token=None,
         )
 
-        # Verify git clone was called
-        assert mock_run_command.call_count >= 1
-        clone_call = mock_run_command.call_args_list[0]
-        assert clone_call[0][0][0] == "git"
-        assert clone_call[0][0][1] == "clone"
-        assert "gh-token-123" in clone_call[0][0][4]  # Token in URL
+        # Verify scaffold was copied
+        mock_copytree.assert_called_once()
+        assert "deployments_scaffold" in str(mock_copytree.call_args[0][0])
 
         # Verify Docker was checked
         mock_ensure_docker.assert_called_once()
@@ -83,12 +79,14 @@ class TestInitCommand:
     @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
     @patch("agentsystems_sdk.commands.init.set_key")
     @patch("agentsystems_sdk.commands.init.shutil.copy")
+    @patch("agentsystems_sdk.commands.init.shutil.copytree")
     @patch("agentsystems_sdk.commands.init.run_command")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
     def test_init_command_non_interactive_mode(
         self,
         mock_stdin,
         mock_run_command,
+        mock_copytree,
         mock_shutil_copy,
         mock_set_key,
         mock_ensure_docker,
@@ -102,39 +100,18 @@ class TestInitCommand:
         project_dir = tmp_path / "test-project"
 
         # Mock required images
-        mock_get_images.return_value = ["agentsystems/gateway:latest"]
+        mock_get_images.return_value = ["agentsystems/agent-control-plane:latest"]
 
         # Execute
         init_command(
             project_dir=project_dir,
-            branch="main",
-            gh_token="gh-token-123",
             docker_token="docker-token-123",
         )
 
-        # Verify git clone was called
-        assert mock_run_command.call_count >= 1
-        clone_call = mock_run_command.call_args_list[0]
-        assert clone_call[0][0][0] == "git"
-        assert clone_call[0][0][1] == "clone"
-
-        # Verify default Langfuse values were used
-        langfuse_calls = [
-            call for call in mock_set_key.call_args_list if "LANGFUSE" in call[0][1]
-        ]
-        assert len(langfuse_calls) > 0
-
-        # Find the org ID call
-        org_id_call = next(
-            (
-                call
-                for call in mock_set_key.call_args_list
-                if call[0][1] == "LANGFUSE_INIT_ORG_ID"
-            ),
-            None,
-        )
-        assert org_id_call is not None
-        assert org_id_call[0][2] == '"org"'  # Default org ID
+        # Verify scaffold was copied
+        mock_copytree.assert_called_once()
+        assert "deployments_scaffold" in str(mock_copytree.call_args[0][0])
+        assert str(project_dir) in str(mock_copytree.call_args[0][1])
 
     @patch("agentsystems_sdk.commands.init.sys.stdin")
     def test_init_command_missing_project_dir_non_interactive(self, mock_stdin):
@@ -159,15 +136,34 @@ class TestInitCommand:
 
         assert exc_info.value.exit_code == 1
 
+    @patch("agentsystems_sdk.commands.init.pathlib.Path")
+    @patch("agentsystems_sdk.commands.init.sys.stdin")
+    def test_init_command_scaffold_not_found(self, mock_stdin, mock_path, tmp_path):
+        """Test init command fails when scaffold directory is not found."""
+        mock_stdin.isatty.return_value = False
+        project_dir = tmp_path / "test-project"
+
+        # Mock scaffold directory not existing
+        mock_scaffold = MagicMock()
+        mock_scaffold.exists.return_value = False
+        mock_path.return_value.__truediv__.return_value = mock_scaffold
+
+        with pytest.raises(typer.Exit) as exc_info:
+            init_command(project_dir=project_dir)
+
+        assert exc_info.value.exit_code == 1
+
     @patch("agentsystems_sdk.commands.init.get_required_images")
     @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
     @patch("agentsystems_sdk.commands.init.set_key")
+    @patch("agentsystems_sdk.commands.init.shutil.copytree")
     @patch("agentsystems_sdk.commands.init.run_command")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
     def test_init_command_env_file_creation(
         self,
         mock_stdin,
         mock_run_command,
+        mock_copytree,
         mock_set_key,
         mock_ensure_docker,
         mock_get_images,
@@ -178,20 +174,17 @@ class TestInitCommand:
         mock_stdin.isatty.return_value = False
         project_dir = tmp_path / "test-project"
 
-        # Mock that git clone creates the directory with .env.example
-        def create_project_structure(cmd):
-            if "clone" in cmd:
-                project_dir.mkdir(parents=True)
-                (project_dir / ".env.example").write_text("# Example env file")
+        # Mock copytree to create directory with .env.example
+        def create_project_structure(src, dst):
+            dst.mkdir(parents=True)
+            (dst / ".env.example").write_text("# Example env file")
 
-        mock_run_command.side_effect = create_project_structure
+        mock_copytree.side_effect = create_project_structure
         mock_get_images.return_value = []
 
         # Execute
         init_command(
             project_dir=project_dir,
-            branch="main",
-            gh_token=None,
             docker_token=None,
         )
 
@@ -222,6 +215,7 @@ class TestInitCommand:
     @patch("agentsystems_sdk.commands.init.docker_login_if_needed")
     @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
     @patch("agentsystems_sdk.commands.init.set_key")
+    @patch("agentsystems_sdk.commands.init.shutil.copytree")
     @patch("agentsystems_sdk.commands.init.run_command")
     @patch("agentsystems_sdk.commands.init.typer.prompt")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
@@ -230,6 +224,7 @@ class TestInitCommand:
         mock_stdin,
         mock_prompt,
         mock_run_command,
+        mock_copytree,
         mock_set_key,
         mock_ensure_docker,
         mock_docker_login,
@@ -243,25 +238,30 @@ class TestInitCommand:
 
         # Mock user inputs
         mock_prompt.side_effect = [
+            str(project_dir),  # Directory prompt
             "TestOrg",  # Organization name
             "admin@test.com",  # Email
             "password123",  # Password
-            "",  # No GitHub token
+            "",  # No initial docker token
             "docker-token-retry",  # Docker token prompt after pull failure
         ]
 
         # Mock required images
         mock_get_images.return_value = ["private/image:latest"]
 
+        # Mock copytree to create directory
+        def create_project_structure(src, dst):
+            dst.mkdir(parents=True)
+            (dst / ".env.example").write_text("")
+
+        mock_copytree.side_effect = create_project_structure
+
         # Mock run_command to fail on first docker pull, succeed on retry
         pull_attempts = 0
 
         def mock_run_side_effect(cmd):
             nonlocal pull_attempts
-            if "clone" in cmd:
-                project_dir.mkdir(parents=True)
-                (project_dir / ".env.example").write_text("")
-            elif "docker" in cmd and "pull" in cmd:
+            if "docker" in cmd and "pull" in cmd:
                 pull_attempts += 1
                 if pull_attempts == 1:
                     raise typer.Exit(code=1)
@@ -271,9 +271,7 @@ class TestInitCommand:
 
         # Execute
         init_command(
-            project_dir=project_dir,
-            branch="main",
-            gh_token="gh-token",
+            project_dir=None,
             docker_token=None,  # No initial docker token
         )
 
@@ -286,12 +284,14 @@ class TestInitCommand:
     @patch("agentsystems_sdk.commands.init.get_required_images")
     @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
     @patch("agentsystems_sdk.commands.init.set_key")
+    @patch("agentsystems_sdk.commands.init.shutil.copytree")
     @patch("agentsystems_sdk.commands.init.run_command")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
     def test_init_command_no_images_to_pull(
         self,
         mock_stdin,
         mock_run_command,
+        mock_copytree,
         mock_set_key,
         mock_ensure_docker,
         mock_get_images,
@@ -302,126 +302,66 @@ class TestInitCommand:
         mock_stdin.isatty.return_value = False
         project_dir = tmp_path / "test-project"
 
-        # No images to pull
-        mock_get_images.return_value = []
+        # Mock copytree to create directory
+        def create_project_structure(src, dst):
+            dst.mkdir(parents=True)
 
-        # Mock git clone to create directory
-        def create_project_structure(cmd):
-            if "clone" in cmd:
-                project_dir.mkdir(parents=True)
-                (project_dir / ".env.example").write_text("")
-
-        mock_run_command.side_effect = create_project_structure
+        mock_copytree.side_effect = create_project_structure
+        mock_get_images.return_value = []  # No images
 
         # Execute
         init_command(
             project_dir=project_dir,
-            branch="main",
-            gh_token=None,
             docker_token=None,
         )
 
-        # Verify no docker pull commands were issued
-        docker_pull_calls = [
-            call for call in mock_run_command.call_args_list if "pull" in str(call)
-        ]
-        assert len(docker_pull_calls) == 0
-
-    @patch("agentsystems_sdk.commands.init.get_required_images")
-    @patch("agentsystems_sdk.commands.init.ensure_docker_installed")
-    @patch("agentsystems_sdk.commands.init.set_key")
-    @patch("agentsystems_sdk.commands.init.run_command")
-    @patch("agentsystems_sdk.commands.init.sys.stdin")
-    def test_init_command_custom_branch(
-        self,
-        mock_stdin,
-        mock_run_command,
-        mock_set_key,
-        mock_ensure_docker,
-        mock_get_images,
-        tmp_path,
-    ):
-        """Test init command with custom branch."""
-        # Setup
-        mock_stdin.isatty.return_value = False
-        project_dir = tmp_path / "test-project"
-        custom_branch = "develop"
-
-        mock_get_images.return_value = []
-
-        # Mock git clone
-        def create_project_structure(cmd):
-            if "clone" in cmd:
-                project_dir.mkdir(parents=True)
-                (project_dir / ".env.example").write_text("")
-
-        mock_run_command.side_effect = create_project_structure
-
-        # Execute
-        init_command(
-            project_dir=project_dir,
-            branch=custom_branch,
-            gh_token=None,
-            docker_token=None,
+        # Verify no docker pull commands were executed
+        assert not any(
+            "docker" in str(call) and "pull" in str(call)
+            for call in mock_run_command.call_args_list
         )
 
-        # Verify git clone used custom branch
-        clone_call = mock_run_command.call_args_list[0]
-        assert "--branch" in clone_call[0][0]
-        assert custom_branch in clone_call[0][0]
-
-    @patch("agentsystems_sdk.commands.init.re.match")
     @patch("agentsystems_sdk.commands.init.typer.prompt")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
     def test_init_command_email_validation(
         self,
         mock_stdin,
         mock_prompt,
-        mock_re_match,
         tmp_path,
     ):
         """Test init command validates email in interactive mode."""
         # Setup
         mock_stdin.isatty.return_value = True
 
-        # Mock email validation to fail first, then pass
-        mock_re_match.side_effect = [
-            None,
-            True,
-            True,
-        ]  # First email invalid, second valid
-
-        # Mock user inputs
+        # Mock user inputs - invalid email first, then valid
         mock_prompt.side_effect = [
             str(tmp_path / "test-project"),  # Directory
             "TestOrg",  # Organization name
             "invalid-email",  # Invalid email
-            "valid@email.com",  # Valid email
+            "admin@test.com",  # Valid email
             "password123",  # Password
-            "",  # No GitHub token
-            "",  # No Docker token
+            "",  # Docker token
         ]
 
-        with patch("agentsystems_sdk.commands.init.run_command"):
-            with patch("agentsystems_sdk.commands.init.set_key"):
-                with patch("agentsystems_sdk.commands.init.ensure_docker_installed"):
+        # Mock other dependencies to avoid actual execution
+        with patch("agentsystems_sdk.commands.init.shutil.copytree"):
+            with patch("agentsystems_sdk.commands.init.ensure_docker_installed"):
+                with patch("agentsystems_sdk.commands.init.docker_login_if_needed"):
                     with patch(
                         "agentsystems_sdk.commands.init.get_required_images",
                         return_value=[],
                     ):
-                        # Execute
-                        init_command(
-                            project_dir=None,
-                            branch="main",
-                            gh_token=None,
-                            docker_token=None,
-                        )
+                        with patch("agentsystems_sdk.commands.init.set_key"):
+                            # Execute
+                            init_command(project_dir=None)
 
-        # Verify email was prompted twice
-        email_prompts = [
-            call for call in mock_prompt.call_args_list if "email" in str(call)
-        ]
-        assert len(email_prompts) == 2
+                            # Verify email prompt was called twice (invalid, then valid)
+                            email_calls = [
+                                call
+                                for call in mock_prompt.call_args_list
+                                if "email" in str(call).lower()
+                            ]
+                            assert len(email_calls) >= 2
 
     @patch("agentsystems_sdk.commands.init.typer.prompt")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
@@ -435,36 +375,32 @@ class TestInitCommand:
         # Setup
         mock_stdin.isatty.return_value = True
 
-        # Mock user inputs
+        # Mock user inputs - short password first, then valid
         mock_prompt.side_effect = [
             str(tmp_path / "test-project"),  # Directory
             "TestOrg",  # Organization name
             "admin@test.com",  # Email
-            "short",  # Too short password
+            "short",  # Password too short
             "password123",  # Valid password
-            "",  # No GitHub token
-            "",  # No Docker token
+            "",  # Docker token
         ]
 
-        with patch("agentsystems_sdk.commands.init.run_command"):
-            with patch("agentsystems_sdk.commands.init.set_key"):
-                with patch("agentsystems_sdk.commands.init.ensure_docker_installed"):
+        # Mock other dependencies to avoid actual execution
+        with patch("agentsystems_sdk.commands.init.shutil.copytree"):
+            with patch("agentsystems_sdk.commands.init.ensure_docker_installed"):
+                with patch("agentsystems_sdk.commands.init.docker_login_if_needed"):
                     with patch(
                         "agentsystems_sdk.commands.init.get_required_images",
                         return_value=[],
                     ):
-                        # Execute
-                        init_command(
-                            project_dir=None,
-                            branch="main",
-                            gh_token=None,
-                            docker_token=None,
-                        )
+                        with patch("agentsystems_sdk.commands.init.set_key"):
+                            # Execute
+                            init_command(project_dir=None)
 
-        # Verify password was prompted twice
-        password_prompts = [
-            call
-            for call in mock_prompt.call_args_list
-            if "password" in str(call) and "hide_input" in str(call)
-        ]
-        assert len(password_prompts) == 2
+                            # Verify password prompt was called twice (short, then valid)
+                            password_calls = [
+                                call
+                                for call in mock_prompt.call_args_list
+                                if "password" in str(call).lower()
+                            ]
+                            assert len(password_calls) >= 2

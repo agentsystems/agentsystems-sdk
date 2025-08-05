@@ -14,6 +14,13 @@ license-files = ["LICENSE", "NOTICE"]
 agentsystems = "agentsystems_sdk.cli:app"
 agntsys = "agentsystems_sdk.cli:app"
 
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["agentsystems_sdk*"]
+
+[tool.setuptools.package-data]
+agentsystems_sdk = ["deployments_scaffold/**/*"]
+
 [build-system]
 requires = ["setuptools>=67", "wheel"]
 build-backend = "setuptools.build_meta"

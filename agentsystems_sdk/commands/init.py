@@ -40,13 +40,6 @@ def init_command(
         writable=True,
         resolve_path=True,
     ),
-    branch: str = typer.Option("main", help="Branch to clone"),
-    gh_token: str | None = typer.Option(
-        None,
-        "--gh-token",
-        envvar="GITHUB_TOKEN",
-        help="GitHub Personal Access Token for private template repo",
-    ),
     docker_token: str | None = typer.Option(
         None,
         "--docker-token",
@@ -54,10 +47,10 @@ def init_command(
         help="Docker Hub Org Access Token for private images",
     ),
 ):
-    """Clone the agent deployment template and pull required Docker images.
+    """Initialize a new AgentSystems deployment from the built-in template.
 
     Steps:
-    1. Clone the `agent-platform-deployments` template repo into *project_dir*.
+    1. Copy the deployment template to *project_dir*.
     2. Pull Docker images required by the platform.
     """
     # Determine target directory
@@ -118,16 +111,6 @@ def init_command(
         pub_key = f"pk-lf-{uuid.uuid4()}"
         secret_key = f"sk-lf-{uuid.uuid4()}"
 
-    if gh_token is None and sys.stdin.isatty():
-        gh_token = (
-            typer.prompt(
-                "GitHub token (leave blank if repo is public)",
-                default="",
-                hide_input=True,
-            )
-            or None
-        )
-
     if docker_token is None and sys.stdin.isatty():
         docker_token = (
             typer.prompt(
@@ -138,12 +121,19 @@ def init_command(
             or None
         )
 
-    base_repo_url = "https://github.com/agentsystems/agent-platform-deployments.git"
-    clone_repo_url = (
-        base_repo_url.replace("https://", f"https://{gh_token}@")
-        if gh_token
-        else base_repo_url
+    # Get the path to the scaffold directory
+    import os
+
+    scaffold_dir = (
+        pathlib.Path(os.path.dirname(__file__)).parent / "deployments_scaffold"
     )
+
+    if not scaffold_dir.exists():
+        typer.secho(
+            "Error: Deployment scaffold not found. Please reinstall agentsystems-sdk.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
 
     # ---------- UI banner ----------
     console.print(
@@ -161,17 +151,18 @@ def init_command(
         TimeElapsedColumn(),
         console=console,
     ) as progress:
-        # Clone repository
-        clone_task = progress.add_task("Cloning template repo", total=None)
-        _display_url = re.sub(r"https://[^@]+@", "https://", clone_repo_url)
+        # Copy template
+        copy_task = progress.add_task("Copying deployment template", total=None)
 
-        run_command(
-            ["git", "clone", "--branch", branch, clone_repo_url, str(project_dir)]
-        )
-        progress.update(clone_task, completed=1)
-
-        # Remove remote origin to avoid accidental pushes to template repo
-        run_command(["git", "-C", str(project_dir), "remote", "remove", "origin"])
+        try:
+            shutil.copytree(scaffold_dir, project_dir)
+            progress.update(copy_task, completed=1)
+        except Exception as e:
+            typer.secho(
+                f"Failed to copy template: {e}",
+                fg=typer.colors.RED,
+            )
+            raise typer.Exit(code=1)
 
         # ---------- Write Langfuse .env ----------
         env_example = project_dir / ".env.example"

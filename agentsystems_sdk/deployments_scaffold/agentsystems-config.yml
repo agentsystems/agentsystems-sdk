@@ -1,0 +1,91 @@
+config_version: 1
+
+registry_connections:
+  dockerhub_agentsystems:
+    url: docker.io
+    enabled: true
+    auth:
+      method: basic
+      username_env: DOCKERHUB_USER_AGENTSYSTEMS
+      password_env: DOCKERHUB_TOKEN_AGENTSYSTEMS
+
+  dockerhub_2:
+    url: docker.io
+    enabled: true
+    auth:
+      method: basic
+      username_env: DOCKERHUB_USER_2
+      password_env: DOCKERHUB_TOKEN_2
+
+  harbor_agentsystems_public:
+    url: harbor.agentsystems.ai
+    enabled: true
+    auth:
+      method: none
+
+  harbor_agentsystems_private:
+    url: harbor.agentsystems.ai
+    enabled: true
+    auth:
+      method: basic
+      username_env: HARBOR_ROBOT_USER
+      password_env: HARBOR_ROBOT_PASSWORD
+
+agents:
+  - name: hello-world-agent
+    repo: agentsystems/hello-world-agent
+    egress_allowlist:
+      - "https://api.anthropic.com"
+    tag: latest
+    registry_connection: dockerhub_agentsystems
+    labels:
+      agent.port: "8000"
+    overrides:
+      env:
+        MODEL_ID: "gpt-4o"
+      expose: ["8000"]
+
+  - name: ibl-agent-hello-there
+    repo: ironbirdlabs/ibl-agent-hello-there
+    tag: latest
+    registry_connection: dockerhub_2
+    labels:
+      agent.port: "8000"
+    overrides:
+      env:
+        MODEL_ID: "gpt-4o"
+      expose: ["8000"]
+
+  - name: historical-events-poetry
+    repo: public-repository-examples/historical-events-poetry
+    tag: "0.1.0"
+    registry_connection: harbor_agentsystems_public
+    labels:
+      agent.port: "8000"
+    overrides:
+      expose: ["8000"]
+
+  - name: historical-events-jokes
+    repo: private-repository-examples/historical-events-jokes
+    tag: "0.1.0"
+    registry_connection: harbor_agentsystems_private
+    labels:
+      agent.port: "8000"
+    overrides:
+      expose: ["8000"]
+
+  - name: agent-template
+    repo: agentsystems/agent-template
+    egress_allowlist:
+      - "https://api.anthropic.com"
+    tag: latest
+    registry_connection: dockerhub_agentsystems
+    labels:
+      agent.port: "8000"
+    artifact_permissions:
+      readers: ["agent-template"]
+      writers: ["agent-template"]
+    overrides:
+      env:
+        MODEL_ID: "gpt-4o"
+      expose: ["8000"]

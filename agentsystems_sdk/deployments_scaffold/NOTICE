@@ -1,0 +1,7 @@
+This distribution orchestrates the following third-party components. Their source and full licence texts are available from the respective upstream projects.
+
+• Langfuse – © 2023-2025 Langfuse UG – MIT
+• ClickHouse Server – © Altinity Inc – Apache-2.0
+• MinIO Server – © MinIO Inc – GNU AGPL v3
+• Redis – © Redis Ltd – BSD-3-Clause
+• PostgreSQL – © PostgreSQL Global Development Group – PostgreSQL Licence
