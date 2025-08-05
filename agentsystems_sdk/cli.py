@@ -46,7 +46,7 @@ app = typer.Typer(
 )
 
 
-def version_callback(value: bool):
+def version_callback(value: bool) -> None:
     """Display version and exit."""
     if value:
         try:
@@ -67,7 +67,7 @@ def main(
         callback=version_callback,
         is_eager=True,
     ),
-):
+) -> None:
     """AgentSystems SDK - Deploy and manage AI agent platforms.
 
     Use `agentsystems COMMAND --help` for detailed help on each command.

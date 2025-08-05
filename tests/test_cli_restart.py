@@ -64,7 +64,7 @@ class TestRestartCommand:
         assert up_call[0][1] == test_env
 
         # Verify gateway wait was called
-        mock_wait_gateway.assert_called_once_with(compose_file)
+        mock_wait_gateway.assert_called_once_with()
 
         # Verify console messages
         print_calls = [str(call) for call in mock_console_print.call_args_list]
@@ -312,7 +312,7 @@ class TestRestartCommand:
         )
 
         # Verify gateway wait was called
-        mock_wait_gateway.assert_called_once_with(compose_file)
+        mock_wait_gateway.assert_called_once_with()
 
         # Verify restart still completes
         print_calls = [str(call) for call in mock_console_print.call_args_list]

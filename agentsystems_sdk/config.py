@@ -9,7 +9,7 @@ and adding new optional keys.
 from __future__ import annotations
 
 import pathlib
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 
 import yaml
 
@@ -19,23 +19,23 @@ CONFIG_FILENAME = "agentsystems-config.yml"
 class Registry:  # pragma: no cover – tiny helper class
     """A single registry entry from the YAML file."""
 
-    def __init__(self, name: str, data: Dict):
+    def __init__(self, name: str, data: Dict[str, Any]) -> None:
         self.name: str = name
         self.url: str = data["url"]
         self.enabled: bool = data.get("enabled", True)
-        self.auth: Dict = data.get("auth", {})
+        self.auth: Dict[str, Any] = data.get("auth", {})
 
     # Convenience helpers -------------------------------------------------
     def login_method(self) -> str:
         return self.auth.get("method", "none")
 
-    def username_env(self) -> str | None:  # only for basic auth
+    def username_env(self) -> Optional[str]:  # only for basic auth
         return self.auth.get("username_env")
 
-    def password_env(self) -> str | None:  # only for basic auth
+    def password_env(self) -> Optional[str]:  # only for basic auth
         return self.auth.get("password_env")
 
-    def token_env(self) -> str | None:  # bearer / token auth
+    def token_env(self) -> Optional[str]:  # bearer / token auth
         return self.auth.get("token_env")
 
     # ---------------------------------------------------------------------
@@ -61,7 +61,7 @@ class Agent:
        ```
     """
 
-    def __init__(self, data: Dict, registries: Dict[str, "Registry"]):
+    def __init__(self, data: Dict[str, Any], registries: Dict[str, "Registry"]) -> None:
         # ----- required keys ------------------------------------------------
         try:
             self.name: str = data["name"]
@@ -72,7 +72,7 @@ class Agent:
         if "image" in data:
             # Legacy / explicit image reference
             self.image: str = data["image"]
-            self.registry: str | None = data.get("registry")
+            self.registry: Optional[str] = data.get("registry")
         else:
             # Shorthand form – need registry + repo, optional tag
             try:
@@ -93,15 +93,15 @@ class Agent:
 
         # ----- optional keys -----------------------------------------------
         self.labels: Dict[str, str] = data.get("labels", {})
-        self.overrides: Dict = data.get("overrides", {})
+        self.overrides: Dict[str, Any] = data.get("overrides", {})
         # List of allowed outbound URL patterns for gateway proxy
         self.egress_allowlist: List[str] = data.get("egress_allowlist", [])
 
         # ----- artifact permissions -----------------------------------------
-        perms: Dict = data.get("artifact_permissions", {})
+        perms: Dict[str, Any] = data.get("artifact_permissions", {})
 
         # Agents may specify readers/writers as list[str] or "*" wildcard
-        def _normalize(val):
+        def _normalize(val: Any) -> List[str]:
             if val == "*":
                 return ["*"]
             return val or []
@@ -116,7 +116,7 @@ class Agent:
 class Config:
     """Top-level config object loaded from YAML."""
 
-    def __init__(self, path: pathlib.Path):
+    def __init__(self, path: pathlib.Path) -> None:
         if not path.exists():
             raise FileNotFoundError(path)
         with path.open("r", encoding="utf-8") as fh:

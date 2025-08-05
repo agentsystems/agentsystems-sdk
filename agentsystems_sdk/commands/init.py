@@ -40,13 +40,13 @@ def init_command(
         writable=True,
         resolve_path=True,
     ),
-    docker_token: str | None = typer.Option(
+    docker_token: Optional[str] = typer.Option(
         None,
         "--docker-token",
         envvar="DOCKER_OAT",
         help="Docker Hub Org Access Token for private images",
     ),
-):
+) -> None:
     """Initialize a new AgentSystems deployment from the built-in template.
 
     Steps:

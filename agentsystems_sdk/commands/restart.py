@@ -68,5 +68,5 @@ def restart_command(
 
     # Optional readiness wait
     if wait_ready and detach:
-        wait_for_gateway_ready(core_compose)
+        wait_for_gateway_ready()
     console.print("[green]✓ Restart complete.[/green]")
