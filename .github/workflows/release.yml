@@ -280,7 +280,7 @@ jobs:
             echo "📦 Creating release ${TAG}..."
             # Create release (gh will create the tag automatically)
             gh release create "${TAG}" \
-              --title "Release ${TAG}" \
+              --title "${TAG}" \
               --target ${{ github.sha }} \
               --notes $'AgentSystems SDK ${{ needs.validate-version.outputs.version }}\n\nInstall: pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}\n\nPyPI: https://pypi.org/project/agentsystems-sdk/${{ needs.validate-version.outputs.version }}/\nChangelog: https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md' \
               dist/*
