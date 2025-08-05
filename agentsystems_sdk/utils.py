@@ -6,7 +6,7 @@ import pathlib
 import shutil
 import subprocess
 import time
-from typing import List
+from typing import List, Dict, Tuple, Optional
 
 import docker
 import typer
@@ -17,7 +17,7 @@ console = Console()
 
 # Detect Docker Compose CLI once at import time
 if shutil.which("docker-compose"):
-    COMPOSE_BIN: list[str] = ["docker-compose"]
+    COMPOSE_BIN: List[str] = ["docker-compose"]
 else:
     try:
         subprocess.run(
@@ -31,7 +31,7 @@ else:
         COMPOSE_BIN = []
 
 
-def run_command(cmd: List[str]) -> None:
+def run_command(cmd: List[str]) -> subprocess.CompletedProcess[bytes]:
     """Run command inheriting the current environment.
 
     Args:
@@ -48,7 +48,7 @@ def run_command(cmd: List[str]) -> None:
         raise typer.Exit(exc.returncode) from exc
 
 
-def run_command_with_env(cmd: List[str], env: dict[str, str]) -> None:
+def run_command_with_env(cmd: List[str], env: Dict[str, str]) -> int:
     """Run command with a custom environment mapping.
 
     Args:
@@ -77,7 +77,7 @@ def ensure_docker_installed() -> None:
         raise typer.Exit(code=1)
 
 
-def docker_login_if_needed(token: str | None) -> None:
+def docker_login_if_needed(token: Optional[str]) -> None:
     """Login to Docker Hub if a token is provided.
 
     Args:
@@ -145,7 +145,7 @@ def compose_args(
     base_path: pathlib.Path,
     *,
     langfuse: bool = True,
-) -> tuple[pathlib.Path, List[str]]:
+) -> Tuple[pathlib.Path, List[str]]:
     """Build docker-compose command arguments.
 
     Args:
@@ -227,7 +227,7 @@ def wait_for_gateway_ready(
         return False
 
 
-def read_env_file(path: pathlib.Path) -> dict:
+def read_env_file(path: pathlib.Path) -> Dict[str, str]:
     """Read environment variables from a .env file.
 
     Args:
@@ -288,8 +288,8 @@ def cleanup_langfuse_init_vars(env_path: pathlib.Path) -> None:
         return
 
     lines = content.splitlines()
-    init_lines: list[str] = []
-    other_lines: list[str] = []
+    init_lines: List[str] = []
+    other_lines: List[str] = []
 
     for ln in lines:
         stripped = ln.lstrip("# ")

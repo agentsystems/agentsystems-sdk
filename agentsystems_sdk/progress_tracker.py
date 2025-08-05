@@ -38,19 +38,18 @@ _auth_header: Optional[str] = None
 _lock = threading.Lock()
 
 
-def _post(path: str, payload: Dict[str, Any]):
+def _post(path: str, payload: Dict[str, Any]) -> None:
     """Fire-and-forget POST in a daemon thread (2-second timeout).
 
     Sends progress updates asynchronously to avoid blocking the main thread.
     """
 
-    def _worker():
+    def _worker() -> None:
         try:
             headers = {"Content-Type": "application/json"}
             if _auth_header:
                 headers["Authorization"] = _auth_header
-            response = requests.post(path, json=payload, headers=headers, timeout=2)
-            return response
+            requests.post(path, json=payload, headers=headers, timeout=2)
         except Exception:
             # Silently ignore network errors – progress reporting is best-effort.
             pass
@@ -65,7 +64,7 @@ def init(
     plan: Optional[List[Dict[str, Any]]] = None,
     gateway_url: Optional[str] = None,
     auth_header: Optional[str] = None,
-):
+) -> None:
     """Initialise the tracker and optionally send the initial *plan* payload.
 
     Parameters
@@ -97,7 +96,7 @@ def init(
 
     with _lock:
         _thread_id = thread_id
-        _gateway_url = gateway_url or os.getenv(_GATEWAY_ENV_VAR, _DEFAULT_GATEWAY)
+        _gateway_url = gateway_url or os.getenv(_GATEWAY_ENV_VAR) or _DEFAULT_GATEWAY
         _auth_header = auth_header
 
     if plan:
@@ -115,7 +114,7 @@ def init(
         _post(f"{_gateway_url}/progress/{thread_id}", payload)
 
 
-def update(**fields: Any):
+def update(**fields: Any) -> None:
     """Send a progress *delta* JSON blob.
 
     Example::

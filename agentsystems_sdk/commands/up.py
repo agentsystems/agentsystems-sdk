@@ -95,7 +95,8 @@ def setup_agents_from_config(
     # Build mapping of registry key -> list[Agent]
     agents_by_reg: Dict[str, List] = defaultdict(list)
     for agent in cfg.agents:
-        agents_by_reg[agent.registry].append(agent)
+        if agent.registry:
+            agents_by_reg[agent.registry].append(agent)
 
     def _image_exists(ref: str, env: dict) -> bool:
         """Return True if *ref* image is already present (using given env)."""
@@ -461,7 +462,7 @@ def up_command(
         pass
 
     if detach and wait_ready:
-        wait_for_gateway_ready(core_compose)
+        wait_for_gateway_ready()
 
     console.print(
         Panel.fit(

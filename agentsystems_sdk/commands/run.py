@@ -147,10 +147,5 @@ def run_command(
         typer.secho(f"Unexpected error: {exc}", fg=typer.colors.RED)
         raise typer.Exit(code=1)
     finally:
-        # Close any open files
-        if input_files:
-            for filepath in input_files:
-                try:
-                    filepath.close()
-                except Exception:
-                    pass
+        # Files are automatically closed by requests when the request completes
+        pass
