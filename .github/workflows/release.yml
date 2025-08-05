@@ -117,6 +117,71 @@ jobs:
           twine check dist/*
           echo "✅ Package validation passed"
 
+      - name: Security scan - Check for sensitive files
+        run: |
+          echo "🔍 Scanning package contents for sensitive files..."
+
+          # Extract wheel and tarball to temporary directories
+          mkdir -p security-check/wheel security-check/tar
+
+          # Check wheel package
+          echo "Checking wheel package..."
+          cd security-check/wheel
+          unzip -q ../../dist/*.whl
+
+          # Check for .env files
+          if find . -name ".env" -type f | grep -q .; then
+            echo "❌ SECURITY ALERT: Found .env file(s) in wheel package:"
+            find . -name ".env" -type f
+            exit 1
+          fi
+
+          # Check for other sensitive patterns
+          if find . -type f \( -name "*.pem" -o -name "*.key" -o -name "*_rsa" -o -name "*_dsa" -o -name "*_ecdsa" -o -name "*_ed25519" \) | grep -q .; then
+            echo "❌ SECURITY ALERT: Found potential private key files:"
+            find . -type f \( -name "*.pem" -o -name "*.key" -o -name "*_rsa" -o -name "*_dsa" -o -name "*_ecdsa" -o -name "*_ed25519" \)
+            exit 1
+          fi
+
+          cd ../..
+
+          # Check tarball
+          echo "Checking source distribution..."
+          cd security-check/tar
+          tar -xzf ../../dist/*.tar.gz
+
+          # Check for .env files
+          if find . -name ".env" -type f | grep -q .; then
+            echo "❌ SECURITY ALERT: Found .env file(s) in source distribution:"
+            find . -name ".env" -type f
+            exit 1
+          fi
+
+          # Check for other sensitive patterns
+          if find . -type f \( -name "*.pem" -o -name "*.key" -o -name "*_rsa" -o -name "*_dsa" -o -name "*_ecdsa" -o -name "*_ed25519" \) | grep -q .; then
+            echo "❌ SECURITY ALERT: Found potential private key files:"
+            find . -type f \( -name "*.pem" -o -name "*.key" -o -name "*_rsa" -o -name "*_dsa" -o -name "*_ecdsa" -o -name "*_ed25519" \)
+            exit 1
+          fi
+
+          # Check for AWS credentials
+          if grep -r "AKIA[0-9A-Z]\{16\}" . --include="*" 2>/dev/null | grep -v "Binary file"; then
+            echo "❌ SECURITY ALERT: Found potential AWS access keys"
+            exit 1
+          fi
+
+          # Check for generic API tokens (basic pattern)
+          if grep -rE "(api[_-]?key|api[_-]?token|auth[_-]?token|access[_-]?token)\s*=\s*['\"][^'\"]{20,}['\"]" . --include="*" 2>/dev/null | grep -v "Binary file" | grep -v ".example"; then
+            echo "⚠️  WARNING: Found potential API tokens - please verify these are examples only"
+          fi
+
+          cd ../..
+
+          # Clean up
+          rm -rf security-check
+
+          echo "✅ Security scan completed - no sensitive files found"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
