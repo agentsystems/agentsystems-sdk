@@ -53,7 +53,7 @@ def test_help_subcommand():
     # pick a subcommand that does not require Docker to be installed
     result = runner.invoke(app, ["init", "--help"])
     assert result.exit_code == 0
-    assert "Clone the agent deployment template" in result.stdout
+    assert "Initialize a new AgentSystems deployment" in result.stdout
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,149 @@
+# Langfuse self-host stack – minimal, network-ready
+# Based on https://github.com/langfuse/langfuse (MIT & EE licenses, see repo).
+# We publish ONLY the web UI (port 3000). Postgres host port is removed to avoid
+# conflicts with the agent-platform Postgres. All services join the external
+# docker network "agents-net" so the agent stack can reach them by the service
+# name `langfuse-web`.
+
+services:
+  langfuse-web:
+    image: langfuse/langfuse:3
+    env_file:
+      - ../../.env
+    restart: unless-stopped
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      minio:
+        condition: service_started
+    ports:
+      - "3000:3000"           # UI exposed to host
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: b9e1d4c3a2f7c6d5e4b3a2c1d0e9f8a7
+      SALT: 5c7e9f1a2b3c4d5e
+      ENCRYPTION_KEY: a3f1e8c9d6b4a7e2c1f3d5b7e9c8a4b6d7e8f1c2b3a4d5e6f7c8b9a0e1d2f4c3
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ""
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredissecret
+      TELEMETRY_ENABLED: "false"
+    networks: [agents-net, agents-int]
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:3
+    restart: unless-stopped
+    depends_on:
+      langfuse-postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      minio:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@langfuse-postgres:5432/postgres
+      SALT: 5c7e9f1a2b3c4d5e
+      ENCRYPTION_KEY: a3f1e8c9d6b4a7e2c1f3d5b7e9c8a4b6d7e8f1c2b3a4d5e6f7c8b9a0e1d2f4c3
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_PREFIX: ""
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      CLICKHOUSE_CLUSTER_ENABLED: "false"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: myredissecret
+      TELEMETRY_ENABLED: "false"
+    networks: [agents-net, agents-int]
+
+  langfuse-postgres:
+    image: postgres:17
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      start_period: 10s
+      retries: 20
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+    networks: [agents-net, agents-int]
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.11
+    restart: unless-stopped
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    # Host-port configurable via HOST_CLICKHOUSE_PORT (default 8123).
+    ports:
+      - "18123:8123"
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+    networks: [agents-net, agents-int]
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    command: --requirepass myredissecret
+    networks: [agents-net, agents-int]
+
+  minio:
+    image: minio/minio
+    restart: unless-stopped
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    ports:
+      - "19000:9000"    # S3 API (optional, local)
+    volumes:
+      - langfuse_minio_data:/data
+    networks: [agents-net, agents-int]
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_minio_data:
+
+networks:
+  agents-net:
+    external: true
+  agents-int:
+    name: agents-int
+    internal: true

@@ -1,0 +1,6 @@
+pre-commit
+check-jsonschema
+pytest
+pytest-cov
+PyYAML
+jsonschema

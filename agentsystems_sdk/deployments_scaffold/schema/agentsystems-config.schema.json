@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["config_version", "registry_connections", "agents"],
+  "properties": {
+    "config_version": {"type": "integer"},
+    "registry_connections": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["url", "enabled", "auth"],
+        "properties": {
+          "url": {"type": "string"},
+          "enabled": {"type": "boolean"},
+          "auth": {
+            "type": "object",
+            "required": ["method"],
+            "properties": {
+              "method": {"type": "string"},
+              "username_env": {"type": "string"},
+              "password_env": {"type": "string"}
+            },
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "repo", "registry_connection"],
+        "properties": {
+          "name": {"type": "string"},
+          "repo": {"type": "string"},
+          "tag": {"type": "string"},
+          "registry_connection": {"type": "string"},
+          "labels": {"type": "object"},
+          "overrides": {"type": "object"}
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": false
+}

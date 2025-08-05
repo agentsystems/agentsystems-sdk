@@ -1,0 +1,67 @@
+
+services:
+  # Initialize artifacts volume with proper permissions
+  init-artifacts:
+    image: alpine:latest
+    volumes:
+      - agentsystems-artifacts:/artifacts
+      - ./init-artifacts-volume.sh:/init-artifacts-volume.sh:ro
+    command: sh /init-artifacts-volume.sh
+    restart: "no"
+
+  gateway:
+    image: agentsystems/agent-control-plane:${ACP_TAG:-latest}
+    ports: ["18080:8080"]
+    depends_on: [postgres]
+    environment:
+      - PG_HOST=postgres
+      - PG_DB=agent_cp
+      - PG_USER=agent
+      - PG_PASSWORD=agent
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ../../agentsystems-config.yml:/etc/agentsystems/agentsystems-config.yml:ro
+      - agentsystems-artifacts:/artifacts
+    networks:
+      - agents-int
+      - agents-net
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+      POSTGRES_DB: agent_cp
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    networks:
+      - agents-net
+
+  db-backup:
+    build: ./db-backup          # builds local backup image
+    # image: agentsystems/db-backup:latest      # commented to force local build
+    depends_on: [postgres]
+    env_file: ../../.env  # path relative to this compose file
+    environment:
+      - PG_HOST=postgres
+      - PG_DB=agent_cp
+      - PG_USER=agent
+      - PG_PASSWORD=agent
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data:ro    # read-only access to PG data dir
+    networks:
+      - agents-net
+
+volumes:
+  pgdata:
+  agentsystems-artifacts:
+
+networks:
+  agents-net:
+    external: true
+  agents-int:
+    name: agents-int
+    internal: true

@@ -19,7 +19,7 @@ pre-commit run --all-files
 * **Python ≥ 3.11** (matching the runtime in `pyproject.toml`)
 * **Docker Desktop** (for pulling and running the AgentSystems images)
 * **pipx** (recommended for an isolated CLI install)
-* A **GitHub Personal Access Token (PAT)** and **Docker Org Access Token (OAT)** when resources are private.
+* A **Docker Org Access Token (OAT)** when resources are private.
 
 ### Clone & editable install
 
@@ -36,7 +36,7 @@ pre-commit run --all-files
  agentsystems --version
 ```
 
-Tokens can be supplied via `--gh-token / --docker-token` flags or loaded automatically from environment variables / `.env`.
+Docker token can be supplied via `--docker-token` flag or loaded automatically from environment variables / `.env`.
 
 ---
 ## 2. Running and testing the CLI
@@ -44,20 +44,20 @@ Tokens can be supplied via `--gh-token / --docker-token` flags or loaded automat
 ### Initialise deployment template
 
 ```bash
-agentsystems init ~/tmp/agent-platform-deployments           # interactive
-cd ~/tmp/agent-platform-deployments
-cp .env.example .env                               # create your config
-# edit .env with GitHub and Docker tokens
+agentsystems init ~/tmp/my-deployment              # interactive
+cd ~/tmp/my-deployment
+# The .env file is created automatically by init
+# Review and adjust settings if needed
 
 # headless / CI
-GITHUB_TOKEN=ghp_xxx DOCKER_OAT=st_xxx \
-  agentsystems init /opt/agentsystems/engine --gh-token "$GITHUB_TOKEN" --docker-token "$DOCKER_OAT"
+DOCKER_OAT=st_xxx \
+  agentsystems init /opt/agentsystems/engine --docker-token "$DOCKER_OAT"
 ```
 
 ### Bring the platform up
 
 ```bash
-cd ~/tmp/agent-platform-deployments   # or pass the path explicitly
+cd ~/tmp/my-deployment   # or pass the path explicitly
 
 # default: detached, returns immediately (requires .env in this directory)
 agentsystems up
