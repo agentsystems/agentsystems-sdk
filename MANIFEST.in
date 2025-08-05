@@ -1,0 +1,5 @@
+# Include the deployment scaffold's .env.example file
+include agentsystems_sdk/deployments_scaffold/.env.example
+
+# Ensure the actual .env file is never included
+global-exclude .env
