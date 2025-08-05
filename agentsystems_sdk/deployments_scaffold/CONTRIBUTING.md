@@ -1,6 +1,6 @@
-# Contributing to `agent-platform-deployments`
+# Contributing to Your AgentSystems Deployment
 
-This repository contains the Docker-Compose deployment template for running the Agent Platform locally or in CI.  Keeping it tidy ensures every downstream project spins up reliably.
+This directory contains the Docker Compose deployment configuration for running the AgentSystems platform locally. Keeping it well-maintained ensures your deployment runs reliably.
 
 ---
 ## Dev environment setup
@@ -15,9 +15,13 @@ pre-commit run --all-files   # first run auto-fixes
 The hooks enforce **ruff**, **black**, **shellcheck**, and **hadolint** so commits stay consistent across AgentSystems repos.
 
 ---
-## Continuous Integration (GitHub Actions)
+## Testing Your Deployment
 
-All pull requests trigger `ci.yml`, which spins up the entire compose stack, polls the Gateway `/health` endpoint, and tears everything down.  If you break the stack, CI fails and the PR cannot be merged.
+You can verify your deployment is working correctly by:
+1. Running `make up` to start the stack
+2. Checking health endpoints: `curl http://localhost:18080/health`
+3. Running `make ps` to see all services are healthy
+4. Reviewing logs with `make logs`
 
 ## Contribution guidelines
 
