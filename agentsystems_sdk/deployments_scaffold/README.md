@@ -1,13 +1,9 @@
-# Agent Platform – Deployments
+# AgentSystems Platform Deployment
 
-[![CI](https://github.com/agentsystems/agent-platform-deployments/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agentsystems/agent-platform-deployments/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/agentsystems/agent-platform-deployments/graph/badge.svg?token=9RC4ICY2FK)](https://codecov.io/gh/agentsystems/agent-platform-deployments)
+**Deployment configuration** for the AgentSystems platform. This directory contains Docker Compose manifests and configuration files needed to run the AgentSystems platform locally.
 
-**Deployment bundle** for the AgentSystems platform. This repo ships _only_ manifests (Docker Compose, Helm, Terraform); it never contains application code. Each manifest references images published from the other repos.
-
-* Repo: `agentsystems/agent-platform-deployments`
-* Brings up: Gateway, Postgres audit DB, Langfuse, Minio (S3), example agents
-* Targets: Docker Compose (laptop), Kubernetes via Helm, and Terraform for cloud
+* Brings up: Gateway (Control Plane), Postgres audit DB, Langfuse tracing, and example agents
+* Primary target: Docker Compose for local development and testing
 
 Related repos:
 • [`agent-control-plane`](https://github.com/agentsystems/agent-control-plane) – Gateway runtime
@@ -43,10 +39,14 @@ graph LR
 
 ## Quick start
 
+This deployment was created using the AgentSystems SDK. To start the platform:
+
 ```bash
-git clone https://github.com/agentsystems/agent-platform-deployments.git
-cd agent-platform-deployments
+# From this directory
 make up
+
+# Or using the SDK CLI
+agentsystems up
 ```
 
 When all containers are healthy:
