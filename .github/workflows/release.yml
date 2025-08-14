@@ -312,13 +312,34 @@ jobs:
           python -m venv prod-test-env
           source prod-test-env/bin/activate
 
-          # Allow brief propagation time
-          echo "Waiting 10s for PyPI propagation..."
-          sleep 10
-
-          # Install from production PyPI
+          # Exponential backoff for PyPI CDN propagation
           echo "Installing agentsystems-sdk==${{ needs.validate-version.outputs.version }} from PyPI..."
-          pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}
+          WAIT_TIME=10
+          MAX_WAIT=600  # 10 minutes max
+          TOTAL_TIME=0
+
+          while true; do
+            if pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}; then
+              echo "✅ Installation successful after ${TOTAL_TIME}s"
+              break
+            fi
+
+            if [ $TOTAL_TIME -ge $MAX_WAIT ]; then
+              echo "❌ Failed to install after ${TOTAL_TIME}s (reached 10 minute timeout)"
+              echo "Package may still be propagating through PyPI CDN"
+              exit 1
+            fi
+
+            echo "Not found yet, waiting ${WAIT_TIME}s before retry (total wait: ${TOTAL_TIME}s)..."
+            sleep $WAIT_TIME
+            TOTAL_TIME=$((TOTAL_TIME + WAIT_TIME))
+
+            # Double wait time, but cap at 2 minutes per attempt
+            WAIT_TIME=$((WAIT_TIME * 2))
+            if [ $WAIT_TIME -gt 120 ]; then
+              WAIT_TIME=120
+            fi
+          done
 
           # Basic smoke test
           echo "Testing: agentsystems --version"
