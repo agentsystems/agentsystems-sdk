@@ -23,7 +23,6 @@ from dotenv import set_key
 
 from ..utils import (
     ensure_docker_installed,
-    docker_login_if_needed,
     run_command,
     get_required_images,
 )
@@ -39,12 +38,6 @@ def init_command(
         dir_okay=True,
         writable=True,
         resolve_path=True,
-    ),
-    docker_token: Optional[str] = typer.Option(
-        None,
-        "--docker-token",
-        envvar="DOCKER_OAT",
-        help="Docker Hub Org Access Token for private images",
     ),
 ) -> None:
     """Initialize a new AgentSystems deployment from the built-in template.
@@ -110,16 +103,6 @@ def init_command(
         password = ""
         pub_key = f"pk-lf-{uuid.uuid4()}"
         secret_key = f"sk-lf-{uuid.uuid4()}"
-
-    if docker_token is None and sys.stdin.isatty():
-        docker_token = (
-            typer.prompt(
-                "Docker org access token (leave blank if images are public)",
-                default="",
-                hide_input=True,
-            )
-            or None
-        )
 
     # Get the path to the scaffold directory
     import os
@@ -199,16 +182,6 @@ def init_command(
         ensure_docker_installed()
         progress.update(docker_task, completed=1)
 
-        # Docker login if token provided
-        if docker_token:
-            login_task = progress.add_task("Logging into Docker Hub", total=1)
-            progress.stop()  # Stop progress display temporarily
-            try:
-                docker_login_if_needed(docker_token)
-            finally:
-                progress.start()  # Always restart progress
-            progress.update(login_task, completed=1)
-
         # Pull required images
         required_images = get_required_images()
 
@@ -225,14 +198,9 @@ def init_command(
                 try:
                     run_command(["docker", "pull", img])
                 except typer.Exit:
-                    if docker_token is None and sys.stdin.isatty():
-                        docker_token = typer.prompt(
-                            "Pull failed – provide Docker org token", hide_input=True
-                        )
-                        docker_login_if_needed(docker_token)
-                        run_command(["docker", "pull", img])
-                    else:
-                        raise
+                    # Image pull failed - control-plane is public on ghcr.io
+                    # This shouldn't happen unless there's a network issue
+                    raise
                 finally:
                     progress.start()  # Always restart progress
                 progress.advance(pull_task)

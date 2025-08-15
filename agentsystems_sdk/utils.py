@@ -264,7 +264,7 @@ def get_required_images() -> List[str]:
         List of Docker image names
     """
     return [
-        "agentsystems/agent-control-plane:latest",
+        "ghcr.io/agentsystems/agent-control-plane:latest",
     ]
 
 

@@ -981,7 +981,7 @@ def _required_images() -> List[str]:
     # Only core platform images; individual agent images are pulled during
     # `agentsystems up` based on the deployment config.
     return [
-        "agentsystems/agent-control-plane:latest",
+        "ghcr.io/agentsystems/agent-control-plane:latest",
     ]
 
 
