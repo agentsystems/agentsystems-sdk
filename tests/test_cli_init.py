@@ -48,7 +48,7 @@ class TestInitCommand:
 
         # Mock required images
         mock_get_images.return_value = [
-            "agentsystems/agent-control-plane:latest",
+            "ghcr.io/agentsystems/agent-control-plane:latest",
             "langfuse/langfuse:latest",
         ]
 
@@ -100,7 +100,9 @@ class TestInitCommand:
         project_dir = tmp_path / "test-project"
 
         # Mock required images
-        mock_get_images.return_value = ["agentsystems/agent-control-plane:latest"]
+        mock_get_images.return_value = [
+            "ghcr.io/agentsystems/agent-control-plane:latest"
+        ]
 
         # Execute
         init_command(

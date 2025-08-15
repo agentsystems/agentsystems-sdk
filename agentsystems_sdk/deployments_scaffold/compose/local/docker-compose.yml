@@ -10,7 +10,7 @@ services:
     restart: "no"
 
   gateway:
-    image: agentsystems/agent-control-plane:${ACP_TAG:-latest}
+    image: ghcr.io/agentsystems/agent-control-plane:${ACP_TAG:-latest}
     ports: ["18080:8080"]
     depends_on: [postgres]
     environment:

@@ -320,7 +320,7 @@ EQUALS_IN_VALUE=key=value
         images = get_required_images()
 
         assert isinstance(images, list)
-        assert "agentsystems/agent-control-plane:latest" in images
+        assert "ghcr.io/agentsystems/agent-control-plane:latest" in images
 
     def test_cleanup_langfuse_init_vars_first_time(self, tmp_path):
         """Test cleanup_langfuse_init_vars on first cleanup."""
