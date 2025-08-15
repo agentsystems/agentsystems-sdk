@@ -91,6 +91,65 @@ jobs:
           fi
           echo "✅ Version check passed: ${{ steps.version.outputs.version }}"
 
+      - name: Version format validation
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Safety check 1: Version format validation
+          if [[ "${{ github.event.inputs.target }}" == "pypi" ]]; then
+            # Production release - enforce strict semver (X.Y.Z)
+            if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "❌ ERROR: Production releases must use semantic versioning (X.Y.Z)"
+              echo "   You specified: ${VERSION}"
+              echo "   Valid examples: 0.3.2, 1.0.0, 2.14.5"
+              echo "   Invalid examples: 0.3.2rc1, 0.3.2-rc1, v0.3.2, 0.3, 0.3.2.1"
+              exit 1
+            fi
+          else
+            # TestPyPI - recommend suffix for clarity but don't enforce
+            if [[ ! "${VERSION}" =~ (rc|a|b|dev|test) ]]; then
+              echo "⚠️  WARNING: Consider using a pre-release suffix for TestPyPI"
+              echo "   Examples: 0.3.2rc1, 0.3.2a1, 0.3.2b1, 0.3.2.dev1"
+              echo "   This helps distinguish test releases from production"
+            fi
+          fi
+
+      - name: Check for existing version on PyPI
+        if: github.event.inputs.target == 'pypi'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Check if this version already exists on PyPI
+          echo "🔍 Checking if version ${VERSION} already exists on PyPI..."
+
+          # Use pip index to check if version exists
+          if pip index versions agentsystems-sdk 2>/dev/null | grep -q "^${VERSION}$"; then
+            echo "❌ ERROR: Version ${VERSION} already exists on PyPI!"
+            echo "   Cannot overwrite existing versions."
+            echo "   Please increment the version in pyproject.toml"
+            exit 1
+          fi
+
+          echo "✅ Version ${VERSION} is available for release"
+
+      - name: Branch protection for production
+        if: github.event.inputs.target == 'pypi'
+        run: |
+          CURRENT_BRANCH="${{ github.ref_name }}"
+
+          # Production releases must be from main branch
+          if [[ "${CURRENT_BRANCH}" != "main" ]]; then
+            echo "❌ ERROR: Production PyPI releases must be from main branch!"
+            echo "   Current branch: ${CURRENT_BRANCH}"
+            echo "   To create a production release:"
+            echo "   1. Merge your changes to main"
+            echo "   2. Run this workflow from main branch"
+            echo "   For testing, use target=testpypi from any branch"
+            exit 1
+          fi
+
+          echo "✅ Branch check passed: releasing from main"
+
   build:
     needs: validate-version
     runs-on: ubuntu-latest
