@@ -275,7 +275,7 @@ def setup_agents_from_config(
         # ----- Artifact volume mounts & env vars --------------------------
         # Mount full artifacts volume – agent manages its own subdirectories
         # Artifact permissions are enforced at the application level via agentsystems-config.yml
-        cmd.extend(["--volume", "local_agentsystems-artifacts:/artifacts"])
+        cmd.extend(["--volume", "agentsystems_agentsystems-artifacts:/artifacts"])
 
         # gateway proxy env
         cmd.extend(
