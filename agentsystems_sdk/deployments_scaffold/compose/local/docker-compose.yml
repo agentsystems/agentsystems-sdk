@@ -21,7 +21,8 @@ services:
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ../../agentsystems-config.yml:/etc/agentsystems/agentsystems-config.yml:ro
+      - ../../agentsystems-config.yml:/etc/agentsystems/agentsystems-config.yml
+      - ../../.env:/etc/agentsystems/.env
       - agentsystems-artifacts:/artifacts
     networks:
       - agents-int
