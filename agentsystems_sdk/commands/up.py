@@ -116,6 +116,18 @@ def setup_agents_from_config(
         if not reg or not reg.enabled:
             continue  # skip disabled registries
 
+        # Check if all images for this registry are already present
+        env_base = os.environ.copy()
+        missing_images = [
+            a.image for a in agents_list if not _image_exists(a.image, env_base)
+        ]
+
+        if not missing_images:
+            console.print(
+                f"[green]✓ All images from {reg.url} already present, skipping login.[/green]"
+            )
+            continue
+
         # Create a fresh Docker config dir so credentials don't clobber
         with tempfile.TemporaryDirectory(
             prefix="agentsystems-docker-config-"

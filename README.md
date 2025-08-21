@@ -73,6 +73,7 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | `agentsystems version` | Show the installed SDK version. |
 | `agentsystems artifacts-path THREAD_ID [REL_PATH]` | Resolve a path inside the shared artifacts volume using thread-centric structure. |
 | `agentsystems run AGENT PAYLOAD` | Invoke an agent with JSON payload and optional file uploads, stream progress, and return results. |
+| `agentsystems update [PROJECT_DIR]` | Update core platform images (agent-control-plane, agentsystems-ui) to latest versions. Faster than re-running `up` when you only need to update platform components. |
 
 ### `up` options
 

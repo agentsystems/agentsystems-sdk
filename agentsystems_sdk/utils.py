@@ -263,9 +263,9 @@ def get_required_images() -> List[str]:
     Returns:
         List of Docker image names
     """
-    return [
-        "ghcr.io/agentsystems/agent-control-plane:latest",
-    ]
+    # Control plane and other images are pulled during 'agentsystems up'
+    # when the docker-compose file is processed, not during init
+    return []
 
 
 def cleanup_langfuse_init_vars(env_path: pathlib.Path) -> None:
