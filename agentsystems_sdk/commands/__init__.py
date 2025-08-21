@@ -9,6 +9,7 @@ from .status import status_command
 from .run import run_command
 from .artifacts import artifacts_path_command
 from .clean import clean_command
+from .update import update_command
 
 __all__ = [
     "init_command",
@@ -20,4 +21,5 @@ __all__ = [
     "run_command",
     "artifacts_path_command",
     "clean_command",
+    "update_command",
 ]
