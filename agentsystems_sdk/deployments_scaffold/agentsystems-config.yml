@@ -73,19 +73,3 @@ agents:
       agent.port: "8000"
     overrides:
       expose: ["8000"]
-
-  - name: agent-template
-    repo: agentsystems/agent-template
-    egress_allowlist:
-      - "https://api.anthropic.com"
-    tag: latest
-    registry_connection: dockerhub_agentsystems
-    labels:
-      agent.port: "8000"
-    artifact_permissions:
-      readers: ["agent-template"]
-      writers: ["agent-template"]
-    overrides:
-      env:
-        MODEL_ID: "gpt-4o"
-      expose: ["8000"]
