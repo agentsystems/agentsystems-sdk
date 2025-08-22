@@ -163,10 +163,63 @@ jobs:
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install build twine
+          pip install build twine pip-licenses
+
+      - name: Generate license attributions
+        run: |
+          echo "🔍 Generating license attributions..."
+
+          # Install runtime dependencies for license collection
+          pip install -e .
+
+          # Create licenses directory
+          mkdir -p licenses/python
+
+          # Generate dependency list
+          pip freeze --exclude-editable > licenses/python/THIRD_PARTY_REQUIREMENTS.txt
+
+          # Generate license data with full text
+          pip-licenses \
+            --format=json \
+            --with-authors \
+            --with-urls \
+            --with-license-file \
+            --no-license-path \
+            > licenses/python/THIRD_PARTY_LICENSES.json
+
+          # Generate human-readable ATTRIBUTIONS.md
+          python - <<'PY'
+          import json
+          p = "licenses/python/THIRD_PARTY_LICENSES.json"
+          data = json.load(open(p))
+          out = "licenses/python/ATTRIBUTIONS.md"
+          with open(out, "w", encoding="utf-8") as f:
+              f.write("# Third-Party Python Packages\n\n")
+              f.write("This package relies on the third-party Python packages listed below.\n\n")
+              for row in sorted(data, key=lambda r: r["Name"].lower()):
+                  f.write(f"## {row.get('Name','')} {row.get('Version','')}\n")
+                  f.write(f"- License: {row.get('License','Unknown')}\n")
+                  if row.get("URL"): f.write(f"- URL: {row['URL']}\n")
+                  if row.get("Author"): f.write(f"- Author: {row['Author']}\n")
+                  txt = row.get("LicenseText")
+                  if txt and len(txt) < 50000:  # Skip extremely long licenses
+                      f.write("\n<details><summary>License text</summary>\n\n")
+                      f.write("```\n")
+                      f.write(txt)
+                      f.write("\n```\n")
+                      f.write("</details>\n")
+                  f.write("\n")
+          PY
+
+          echo "✅ License attributions generated"
+          echo "Files created:"
+          ls -la licenses/python/
 
       - name: Build package
         run: |
+          # Copy license files to package data directory before building
+          cp -r licenses agentsystems_sdk/
+
           python -m build
           echo "📦 Package built successfully"
           ls -la dist/
