@@ -169,8 +169,9 @@ jobs:
         run: |
           echo "🔍 Generating license attributions..."
 
-          # Install runtime dependencies for license collection
+          # Install ALL dependencies (runtime + dev) for comprehensive license coverage
           pip install -e .
+          pip install -r requirements-dev.txt
 
           # Create licenses directory
           mkdir -p licenses/python
