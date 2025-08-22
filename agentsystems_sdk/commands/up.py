@@ -358,6 +358,18 @@ def up_command(
         dir_okay=False,
         resolve_path=True,
     ),
+    agent_control_plane_version: Optional[str] = typer.Option(
+        None,
+        "--agent-control-plane",
+        "--acp",
+        help="Pin agent-control-plane to specific version (e.g., 0.3.17)",
+    ),
+    agentsystems_ui_version: Optional[str] = typer.Option(
+        None,
+        "--agentsystems-ui",
+        "--ui",
+        help="Pin agentsystems-ui to specific version (e.g., 0.1.5)",
+    ),
 ) -> None:
     """Start the full AgentSystems platform via docker compose.
 
@@ -377,6 +389,64 @@ def up_command(
     isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
     env_base = os.environ.copy()
     env_base["DOCKER_CONFIG"] = isolated_cfg.name
+
+    # Validate and set version tags from CLI flags if provided
+    def _validate_version(version_str: str, min_version: str, component: str) -> bool:
+        """Validate that version meets minimum requirements for version management features."""
+        import re
+
+        # Skip validation for special tags
+        if version_str in ["latest", "main", "development"]:
+            return True
+
+        # Validate semantic version format
+        if not re.match(r"^\d+\.\d+\.\d+$", version_str):
+            console.print(
+                f"[red]❌ Error: {component} version must be semantic version (x.y.z format)[/red]"
+            )
+            console.print(f"[red]   You provided: {version_str}[/red]")
+            console.print("[red]   Valid examples: 0.4.0, 1.2.3[/red]")
+            return False
+
+        # Simple version comparison (works for our use case)
+        def version_tuple(v):
+            return tuple(map(int, v.split(".")))
+
+        try:
+            if version_tuple(version_str) < version_tuple(min_version):
+                console.print(
+                    f"[red]❌ Error: {component} version {version_str} does not support version management[/red]"
+                )
+                console.print(
+                    f"[red]   Minimum required {component}: {min_version}[/red]"
+                )
+                console.print(
+                    "[red]   This version introduced /version and /component-versions endpoints[/red]"
+                )
+                return False
+        except Exception:
+            console.print(f"[red]❌ Error: Invalid version format: {version_str}[/red]")
+            return False
+
+        return True
+
+    if agent_control_plane_version:
+        if not _validate_version(
+            agent_control_plane_version, "0.4.0", "agent-control-plane"
+        ):
+            raise typer.Exit(1)
+        env_base["ACP_TAG"] = agent_control_plane_version
+        console.print(
+            f"[yellow]📌 Pinning agent-control-plane to version: {agent_control_plane_version}[/yellow]"
+        )
+
+    if agentsystems_ui_version:
+        if not _validate_version(agentsystems_ui_version, "0.2.0", "agentsystems-ui"):
+            raise typer.Exit(1)
+        env_base["UI_TAG"] = agentsystems_ui_version
+        console.print(
+            f"[yellow]📌 Pinning agentsystems-ui to version: {agentsystems_ui_version}[/yellow]"
+        )
 
     # .env gets loaded later – keep env_base in sync
     def _sync_env_base() -> None:

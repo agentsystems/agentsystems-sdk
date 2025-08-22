@@ -88,6 +88,8 @@ agents:
             agents_mode=AgentStartMode.all,
             no_langfuse=False,
             env_file=None,
+            agent_control_plane_version=None,
+            agentsystems_ui_version=None,
         )
 
         # Verify
@@ -161,6 +163,8 @@ agents:
             agents_mode=AgentStartMode.none,
             no_langfuse=False,
             env_file=None,
+            agent_control_plane_version=None,
+            agentsystems_ui_version=None,
         )
 
         # Should call setup_agents with none mode
@@ -196,6 +200,8 @@ agents:
                 no_langfuse=False,
                 agents_mode=AgentStartMode.create,
                 env_file=None,
+                agent_control_plane_version=None,
+                agentsystems_ui_version=None,
             )
 
     @patch("agentsystems_sdk.commands.up.subprocess.run")
@@ -265,6 +271,8 @@ agents:
             agents_mode=AgentStartMode.none,  # Should skip agent setup
             no_langfuse=False,
             env_file=None,
+            agent_control_plane_version=None,
+            agentsystems_ui_version=None,
         )
 
         # Should call setup_agents with none mode which will skip actual agent setup
@@ -339,6 +347,8 @@ agents:
             agents_mode=AgentStartMode.all,
             no_langfuse=True,  # Should pass langfuse=False to compose_args
             env_file=None,
+            agent_control_plane_version=None,
+            agentsystems_ui_version=None,
         )
 
         # Verify compose_args was called with langfuse=False
@@ -392,6 +402,8 @@ agents:
                 no_langfuse=False,
                 agents_mode=AgentStartMode.create,
                 env_file=None,
+                agent_control_plane_version=None,
+                agentsystems_ui_version=None,
             )
 
     @patch("agentsystems_sdk.commands.up.subprocess.run")
@@ -460,9 +472,13 @@ agents:
         up_command(
             project_dir=tmp_path,
             detach=True,
+            fresh=False,
             wait_ready=True,
             agents_mode=AgentStartMode.all,
+            no_langfuse=False,
             env_file=custom_env,  # Use custom env file
+            agent_control_plane_version=None,
+            agentsystems_ui_version=None,
         )
 
         # Should succeed even without default .env

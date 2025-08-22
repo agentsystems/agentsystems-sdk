@@ -24,6 +24,8 @@ from agentsystems_sdk.commands import (
     artifacts_path_command,
     clean_command,
     update_command,
+    version_command,
+    versions_command,
 )
 
 # Load .env before Typer parses env-var options
@@ -87,6 +89,8 @@ app.command(name="run")(run_command)
 app.command(name="artifacts-path")(artifacts_path_command)
 app.command(name="clean")(clean_command)
 app.command(name="update")(update_command)
+app.command(name="version")(version_command)
+app.command(name="versions")(versions_command)
 
 
 if __name__ == "__main__":
