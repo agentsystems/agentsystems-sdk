@@ -10,6 +10,7 @@ from .run import run_command
 from .artifacts import artifacts_path_command
 from .clean import clean_command
 from .update import update_command
+from .version import version_command, versions_command
 
 __all__ = [
     "init_command",
@@ -22,4 +23,6 @@ __all__ = [
     "artifacts_path_command",
     "clean_command",
     "update_command",
+    "version_command",
+    "versions_command",
 ]
