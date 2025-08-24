@@ -289,6 +289,16 @@ def setup_agents_from_config(
         # Artifact permissions are enforced at the application level via agentsystems-config.yml
         cmd.extend(["--volume", "agentsystems_agentsystems-artifacts:/artifacts"])
 
+        # Mount agentsystems-config.yml for model routing via agentsystems-toolkit
+        config_file_path = project_dir / "agentsystems-config.yml"
+        if config_file_path.exists():
+            cmd.extend(
+                [
+                    "--volume",
+                    f"{config_file_path}:/etc/agentsystems/agentsystems-config.yml:ro",
+                ]
+            )
+
         # gateway proxy env
         cmd.extend(
             [
