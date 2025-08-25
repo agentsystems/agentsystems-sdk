@@ -126,7 +126,7 @@ class TestDownCommand:
         # Verify
         mock_docker_from_env.assert_called_once()
         mock_client.containers.list.assert_called_once_with(
-            filters={"label": "agent.enabled=true"}
+            all=True, filters={"label": "agent.enabled=true"}
         )
 
         # Verify containers were removed
@@ -375,7 +375,7 @@ class TestDownCommand:
         # Verify Docker client was called but no containers were removed
         mock_docker_from_env.assert_called_once()
         mock_client.containers.list.assert_called_once_with(
-            filters={"label": "agent.enabled=true"}
+            all=True, filters={"label": "agent.enabled=true"}
         )
 
     @patch("agentsystems_sdk.commands.down.run_command_with_env")
