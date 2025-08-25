@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import pathlib
+import subprocess
 from typing import Optional
 
 import docker
@@ -93,19 +94,46 @@ def down_command(
     console.print("[cyan]⏻ Stopping core services…[/cyan]")
     run_command_with_env(cmd, os.environ.copy())
 
-    # Remove agent containers if requested
-    if delete_containers:
+    # Always remove agent containers to ensure fresh config on next start
+    console.print("[cyan]🧹 Cleaning agent containers for fresh restart...[/cyan]")
+    try:
         client = docker.from_env()
-        for c in client.containers.list(filters={"label": "agent.enabled=true"}):
+        agent_containers = client.containers.list(
+            all=True, filters={"label": "agent.enabled=true"}
+        )
+        for c in agent_containers:
             console.print(f"[cyan]⏻ Removing agent container {c.name}…[/cyan]")
             try:
                 c.remove(force=True)
             except Exception as exc:
-                console.print(f"[red]Failed to remove {c.name}: {exc}[/red]")
+                console.print(f"[yellow]⚠️ Failed to remove {c.name}: {exc}[/yellow]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ Agent cleanup failed: {exc}[/yellow]")
+
+    # Remove agent containers if explicitly requested (legacy behavior)
+    if delete_containers:
+        console.print(
+            "[cyan]ℹ️ --delete-containers flag no longer needed (now automatic)[/cyan]"
+        )
+
+    # Clean up unused networks for fresh state
+    console.print("[cyan]🧹 Cleaning unused networks...[/cyan]")
+    try:
+        result = subprocess.run(
+            ["docker", "network", "prune", "-f"], capture_output=True, text=True
+        )
+        if result.stdout.strip():
+            console.print("[cyan]✓ Removed unused networks[/cyan]")
+    except Exception as exc:
+        console.print(f"[yellow]⚠️ Network cleanup failed: {exc}[/yellow]")
 
     console.print(
         "[green]✓ Platform stopped."
         + (" Volumes deleted." if delete_volumes else "")
-        + (" Agent containers removed." if delete_containers else "")
+        + (
+            " Agent containers cleaned."
+            if delete_containers
+            else " Agent containers cleaned."
+        )
         + "[/green]"
     )

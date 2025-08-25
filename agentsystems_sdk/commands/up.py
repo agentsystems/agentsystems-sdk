@@ -395,6 +395,29 @@ def up_command(
 
     ensure_docker_installed()
 
+    # Clean networks for fresh state (prevents stale network ID issues)
+    console.print("[cyan]🧹 Cleaning unused networks for fresh networking...[/cyan]")
+    try:
+        subprocess.run(
+            ["docker", "network", "prune", "-f"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        # Non-critical if this fails
+        pass
+
+    # Ensure required external networks exist
+    try:
+        subprocess.run(
+            ["docker", "network", "create", "agents-net"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        # Network might already exist, that's fine
+        pass
+
     # Use isolated Docker config for the entire session
     isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
     env_base = os.environ.copy()
