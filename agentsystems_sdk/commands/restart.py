@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import os
 import pathlib
+from typing import Optional
 
 import typer
 from rich.console import Console
 
-from ..utils import (
-    ensure_docker_installed,
-    compose_args,
-    run_command_with_env,
-    wait_for_gateway_ready,
-)
+from .down import down_command
+from .up import up_command, AgentStartMode
 
 console = Console()
 
@@ -42,31 +38,52 @@ def restart_command(
     no_langfuse: bool = typer.Option(
         False, "--no-langfuse", help="Disable Langfuse tracing stack"
     ),
+    agents_mode: AgentStartMode = typer.Option(
+        AgentStartMode.create,
+        "--agents",
+        help="Agent startup mode: all (start), create (pull & create containers stopped), none (skip agents)",
+        show_default=True,
+    ),
+    env_file: Optional[pathlib.Path] = typer.Option(
+        None,
+        "--env-file",
+        help="Custom .env file passed to docker compose",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
 ):
-    """Quick bounce: `down` → `up` (non-destructive).
+    """Full platform restart with fresh agent containers and updated configuration.
 
-    Retains data volumes; wipe with `down --delete-volumes` first.
-    Useful during development and CI.
+    This is equivalent to `agentsystems down && agentsystems up` and will:
+    - Stop all services and remove agent containers
+    - Clean up unused networks
+    - Start services with fresh agent containers using current .env and config
+
+    Perfect for picking up configuration changes (API keys, model connections, etc.).
     """
-    ensure_docker_installed()
-    core_compose, compose_args_list = compose_args(
-        project_dir, langfuse=not no_langfuse
+    console.print("[cyan]🔄 Full platform restart (down → up)[/cyan]")
+
+    # Call down command with default settings
+    down_command(
+        project_dir=project_dir,
+        delete_volumes=False,
+        delete_containers=False,  # Cleanup is now automatic
+        delete_all=False,
+        volumes=None,
+        no_langfuse=no_langfuse,
     )
-    env = os.environ.copy()
 
-    # Stop current stack
-    cmd_down: list[str] = [*compose_args_list, "down"]
-    console.print("[cyan]⏻ Stopping core services…[/cyan]")
-    run_command_with_env(cmd_down, env)
-
-    # Start stack again
-    cmd_up: list[str] = [*compose_args_list, "up"]
-    if detach:
-        cmd_up.append("-d")
-    console.print("[cyan]⏫ Starting core services…[/cyan]")
-    run_command_with_env(cmd_up, env)
-
-    # Optional readiness wait
-    if wait_ready and detach:
-        wait_for_gateway_ready()
-    console.print("[green]✓ Restart complete.[/green]")
+    # Call up command with all the same options
+    up_command(
+        project_dir=project_dir,
+        detach=detach,
+        fresh=False,  # Down already cleaned up
+        wait_ready=wait_ready,
+        no_langfuse=no_langfuse,
+        agents_mode=agents_mode,
+        env_file=env_file,
+        agent_control_plane_version=None,
+        agentsystems_ui_version=None,
+    )
