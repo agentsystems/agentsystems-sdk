@@ -211,7 +211,7 @@ def init_command(
         f"✅ Initialization complete!\n\n"
         f"Next steps:\n"
         f"  1. cd {display_dir}\n"
-        f"  2. Review .env and adjust if needed.\n"
-        f"  3. Run: agentsystems up\n"
+        f"  2. Run: agentsystems up\n"
+        f"  3. Open http://localhost:3001 to configure this deployment\n"
     )
     console.print(Panel.fit(next_steps, border_style="green"))
