@@ -112,13 +112,15 @@ agents:
 
 
 def test_no_agents(tmp_path: Path):
-    with pytest.raises(ValueError):
-        Config(_write_yaml(tmp_path, yaml_no_agents))
+    # Empty agent list should be allowed for onboarding
+    config = Config(_write_yaml(tmp_path, yaml_no_agents))
+    assert config.agents == []
 
 
 def test_empty_registries(tmp_path: Path):
-    with pytest.raises(ValueError):
-        Config(_write_yaml(tmp_path, yaml_empty_registries))
+    # Empty registry dict should be allowed for onboarding
+    config = Config(_write_yaml(tmp_path, yaml_empty_registries))
+    assert config.registries == {}
 
 
 def test_shorthand_default_tag(tmp_path: Path):
