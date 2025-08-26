@@ -141,12 +141,7 @@ class Config:
         ]
 
         # Basic validation -------------------------------------------------
-        if not self.registries:
-            raise ValueError(
-                "Config must declare at least one registry under 'registries'."
-            )
-        if not self.agents:
-            raise ValueError("Config must declare at least one agent under 'agents'.")
+        # Allow empty registries and agents for clean onboarding experience
 
     # ------------------------------------------------------------------
     def enabled_registries(self) -> List[Registry]:

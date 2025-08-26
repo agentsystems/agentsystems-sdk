@@ -2,12 +2,12 @@ config_version: 1
 
 # Registry connections for pulling agent images
 # Add registry connections here to access private agent repositories
-registry_connections:
+registry_connections: {}
 
 # AI agents to deploy
 # Add agents here after configuring model connections
-agents:
+agents: []
 
 # Model connections for AI inference
 # Configure these with your API keys to enable agents
-model_connections:
+model_connections: {}
