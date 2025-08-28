@@ -588,13 +588,18 @@ def up_command(
     )
 
     # Check for missing Ollama models and provide instructions
-    _check_missing_ollama_models(cfg, console)
+    has_missing_models = _check_missing_ollama_models(cfg, console)
 
-    # Display prominent UI link
+    # Display prominent UI link with conditional message
     console.print()
+    if has_missing_models:
+        ui_message = "🌐 [bold cyan]AgentSystems UI Ready![/bold cyan]\n\nPull models via command above, then visit:\n\n👉 [bold blue]http://localhost:3001[/bold blue]"
+    else:
+        ui_message = "🌐 [bold cyan]AgentSystems UI Ready![/bold cyan]\n\n👉 [bold blue]http://localhost:3001[/bold blue]"
+
     console.print(
         Panel.fit(
-            "🌐 [bold cyan]AgentSystems UI Ready![/bold cyan]\n\nPull models via the command above before visiting\n\n👉 [bold blue]http://localhost:3001[/bold blue]",
+            ui_message,
             border_style="cyan",
             padding=(1, 2),
         )
@@ -604,8 +609,12 @@ def up_command(
     isolated_cfg.cleanup()
 
 
-def _check_missing_ollama_models(cfg: Config, console: Console) -> None:
-    """Check for missing local Ollama models and provide download instructions."""
+def _check_missing_ollama_models(cfg: Config, console: Console) -> bool:
+    """Check for missing local Ollama models and provide download instructions.
+
+    Returns:
+        True if any local Ollama models are missing, False otherwise.
+    """
     # Read model_connections directly from YAML file since Config class doesn't include it
     try:
         import yaml
@@ -614,10 +623,10 @@ def _check_missing_ollama_models(cfg: Config, console: Console) -> None:
             raw_config = yaml.safe_load(f) or {}
         model_connections = raw_config.get("model_connections", {})
     except Exception:
-        return  # Skip if can't read config
+        return False  # Skip if can't read config
 
     if not model_connections:
-        return
+        return False
 
     # Parse .env file to resolve environment variables
     project_dir = pathlib.Path.cwd()
@@ -655,13 +664,13 @@ def _check_missing_ollama_models(cfg: Config, console: Console) -> None:
                     )
 
     if not local_ollama_models:
-        return
+        return False
 
     try:
         # Check if local Ollama service is available
         response = requests.get("http://localhost:11434/api/tags", timeout=5)
         if response.status_code != 200:
-            return
+            return False
 
         available_models = {
             model["name"] for model in response.json().get("models", [])
@@ -686,7 +695,10 @@ def _check_missing_ollama_models(cfg: Config, console: Console) -> None:
                     "📄 By downloading, you accept Google's Gemma Terms: [link]https://ai.google.dev/gemma/terms[/link]"
                 )
                 console.print()
+            return True  # Found missing models
+
+        return False  # All models present
 
     except Exception:
         # Silently skip if Ollama check fails - don't break the user experience
-        pass
+        return False
