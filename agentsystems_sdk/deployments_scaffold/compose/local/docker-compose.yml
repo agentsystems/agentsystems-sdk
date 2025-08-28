@@ -76,9 +76,31 @@ services:
       retries: 3
       start_period: 10s
 
+  # Local Ollama service for credential-free AI inference
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"  # Expose to host for debugging/management
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - OLLAMA_ORIGINS=*  # Allow cross-origin requests
+    networks:
+      - agents-int  # Same network as agents
+      - agents-net  # Same network as gateway/UI
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   pgdata:
   agentsystems-artifacts:
+  ollama-models:
 
 networks:
   agents-net:

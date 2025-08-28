@@ -307,7 +307,7 @@ def setup_agents_from_config(
                 "--env",
                 "HTTPS_PROXY=http://gateway:3128",
                 "--env",
-                "NO_PROXY=gateway,localhost,127.0.0.1",
+                "NO_PROXY=gateway,localhost,127.0.0.1,ollama",
             ]
         )
         # port mapping (random host port)
