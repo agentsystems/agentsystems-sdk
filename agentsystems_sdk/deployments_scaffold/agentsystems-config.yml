@@ -1,13 +1,33 @@
 config_version: 1
 
 # Registry connections for pulling agent images
-# Add registry connections here to access private agent repositories
-registry_connections: {}
+registry_connections:
+  agentsystems_public:
+    url: docker.io
+    enabled: true
+    auth:
+      method: none
 
 # AI agents to deploy
-# Add agents here after configuring model connections
-agents: []
+agents:
+- name: hello-world-agent
+  repo: agentsystems/hello-world-agent
+  tag: latest
+  registry_connection: agentsystems_public
+  labels:
+    agent.port: '8000'
+  overrides:
+    expose:
+    - '8000'
 
 # Model connections for AI inference
-# Configure these with your API keys to enable agents
-model_connections: {}
+model_connections:
+  # Local Ollama (works out of the box with no API keys required)
+  gemma3:1b:
+    model_id: gemma3:1b
+    hosting_provider: ollama
+    enabled: true
+    hosting_provider_model_id: gemma3:1b
+    auth:
+      method: ollama_auth
+      base_url: LOCAL_OLLAMA_BASE_URL
