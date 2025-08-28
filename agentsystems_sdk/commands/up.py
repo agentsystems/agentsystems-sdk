@@ -10,6 +10,8 @@ import time
 from enum import Enum
 from typing import Dict, List, Optional
 
+import requests
+
 import docker
 import typer
 from dotenv import load_dotenv
@@ -585,5 +587,106 @@ def up_command(
         )
     )
 
+    # Check for missing Ollama models and provide instructions
+    _check_missing_ollama_models(cfg, console)
+
+    # Display prominent UI link
+    console.print()
+    console.print(
+        Panel.fit(
+            "🌐 [bold cyan]AgentSystems UI Ready![/bold cyan]\n\nPull models via the command above before visiting\n\n👉 [bold blue]http://localhost:3001[/bold blue]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+
     # Cleanup temporary Docker config directory
     isolated_cfg.cleanup()
+
+
+def _check_missing_ollama_models(cfg: Config, console: Console) -> None:
+    """Check for missing local Ollama models and provide download instructions."""
+    # Read model_connections directly from YAML file since Config class doesn't include it
+    try:
+        import yaml
+
+        with open(cfg.path, "r", encoding="utf-8") as f:
+            raw_config = yaml.safe_load(f) or {}
+        model_connections = raw_config.get("model_connections", {})
+    except Exception:
+        return  # Skip if can't read config
+
+    if not model_connections:
+        return
+
+    # Parse .env file to resolve environment variables
+    project_dir = pathlib.Path.cwd()
+    env_file = project_dir / ".env"
+    env_vars = {}
+
+    if env_file.exists():
+        try:
+            with open(env_file, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        key, value = line.split("=", 1)
+                        env_vars[key.strip()] = value.strip().strip('"').strip("'")
+        except Exception:
+            pass  # Continue without env vars if parsing fails
+
+    # Find LOCAL Ollama models in configuration
+    local_ollama_models = []
+    for model_id, model_config in model_connections.items():
+        if model_config.get("hosting_provider") == "ollama" and model_config.get(
+            "enabled", True
+        ):
+            # Check if this is a local Ollama instance
+            base_url_env_name = model_config.get("auth", {}).get("base_url")
+            if base_url_env_name:
+                # Resolve environment variable from .env file or actual env
+                base_url = env_vars.get(base_url_env_name) or os.getenv(
+                    base_url_env_name, ""
+                )
+                # Only check local Ollama instances (not remote ones)
+                if base_url == "http://ollama:11434":
+                    local_ollama_models.append(
+                        model_config.get("hosting_provider_model_id", model_id)
+                    )
+
+    if not local_ollama_models:
+        return
+
+    try:
+        # Check if local Ollama service is available
+        response = requests.get("http://localhost:11434/api/tags", timeout=5)
+        if response.status_code != 200:
+            return
+
+        available_models = {
+            model["name"] for model in response.json().get("models", [])
+        }
+        missing_models = [
+            model for model in local_ollama_models if model not in available_models
+        ]
+
+        if missing_models:
+            console.print()
+            for model in missing_models:
+                console.print(
+                    f"⚠️  [yellow]Missing local Ollama model: {model}[/yellow]"
+                )
+                console.print("📋 Run the command below to download:")
+                console.print()
+                console.print(
+                    f"[bold green]docker exec agentsystems-ollama-1 ollama pull {model}[/bold green]"
+                )
+                console.print()
+                console.print(
+                    "📄 By downloading, you accept Google's Gemma Terms: [link]https://ai.google.dev/gemma/terms[/link]"
+                )
+                console.print()
+
+    except Exception:
+        # Silently skip if Ollama check fails - don't break the user experience
+        pass
