@@ -681,20 +681,17 @@ def _check_missing_ollama_models(cfg: Config, console: Console) -> bool:
 
         if missing_models:
             console.print()
+            console.print("📋 Run these commands to download missing models:")
+            console.print()
             for model in missing_models:
-                console.print(
-                    f"⚠️  [yellow]Missing local Ollama model: {model}[/yellow]"
-                )
-                console.print("📋 Run the command below to download:")
-                console.print()
                 console.print(
                     f"[bold green]docker exec agentsystems-ollama-1 ollama pull {model}[/bold green]"
                 )
-                console.print()
-                console.print(
-                    "📄 By downloading, you accept Google's Gemma Terms: [link]https://ai.google.dev/gemma/terms[/link]"
-                )
-                console.print()
+            console.print()
+            console.print(
+                "📄 By downloading, you accept the model's terms regarding licensing, usage, etc."
+            )
+            console.print()
             return True  # Found missing models
 
         return False  # All models present
