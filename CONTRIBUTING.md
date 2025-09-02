@@ -19,7 +19,6 @@ pre-commit run --all-files
 * **Python ≥ 3.11** (matching the runtime in `pyproject.toml`)
 * **Docker Desktop** (for pulling and running the AgentSystems images)
 * **pipx** (recommended for an isolated CLI install)
-* A **Docker Org Access Token (OAT)** when resources are private.
 
 ### Clone & editable install
 
@@ -36,7 +35,6 @@ pre-commit run --all-files
  agentsystems --version
 ```
 
-Docker token can be supplied via `--docker-token` flag or loaded automatically from environment variables / `.env`.
 
 ---
 ## 2. Running and testing the CLI
@@ -50,8 +48,7 @@ cd ~/tmp/my-deployment
 # Review and adjust settings if needed
 
 # headless / CI
-DOCKER_OAT=st_xxx \
-  agentsystems init /opt/agentsystems/engine --docker-token "$DOCKER_OAT"
+agentsystems init /opt/agentsystems/engine
 ```
 
 ### Bring the platform up
@@ -78,7 +75,6 @@ agentsystems down
 agentsystems down --volumes
 ```
 
-`DOCKER_OAT` must have the **"Read public repositories"** permission so pulls for `postgres`, `redis`, etc. succeed.
 
 The CLI prints Rich progress bars, masks secrets, and logs into Docker with `--password-stdin`.
 

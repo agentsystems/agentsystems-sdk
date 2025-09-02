@@ -1,0 +1,28 @@
+# Git and version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+build/
+dist/
+*.egg-info/
+.venv
+.env
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
