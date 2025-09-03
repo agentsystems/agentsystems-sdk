@@ -292,7 +292,7 @@ pipx reinstall --editable .
 ---
 ## Security notes
 
-* The CLI never prints your secrets. GitHub PATs are masked and Docker login uses `--password-stdin`.
+* The CLI is designed not to print secret values. GitHub PATs are masked and Docker login uses `--password-stdin`.
 * Delete tokens / `.env` after the resources become public.
 
 ---
@@ -303,4 +303,4 @@ Contributions welcome—see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-All use of this software is governed by the [LICENSE](LICENSE).
+Licensed under the [Apache-2.0 license](./LICENSE).
