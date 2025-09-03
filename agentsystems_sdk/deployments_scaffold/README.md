@@ -71,7 +71,7 @@ The `ci.yml` workflow validates every pull request by performing a full stack bo
 5. Polls `http://localhost:18080/health` until the Gateway reports **200 OK**.
 6. Tears the stack down and removes the network.
 
-This ensures future merges cannot break the deployment instructions.
+This helps ensure future merges don't break the deployment instructions.
 
 ---
 
