@@ -571,7 +571,7 @@ def up(
 
     # --------------------------------------------------
     # Use isolated Docker config for the entire session so global Docker login
-    # state never interferes with pulls/logins.
+    # state should not interfere with pulls/logins.
     import tempfile
 
     isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
