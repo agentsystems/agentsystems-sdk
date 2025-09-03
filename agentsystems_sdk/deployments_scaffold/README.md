@@ -130,7 +130,7 @@ To add your own agent:
    * start the container with **the entire `.env`** forwarded via `--env-file`, and
    * label it so the Gateway auto-discovers the HTTP port.
 
-> **Security tip** – keep your credentials in environment variables (not in the YAML).  The SDK passes `.env` to Docker directly; secrets never enter Python process memory.
+> **Security tip** – keep your credentials in environment variables (not in the YAML). The SDK passes `--env-file .env` to Docker directly; the CLI avoids parsing or logging secret values. (As with any process, environment data may exist in memory during execution.)
 
 ---
 
@@ -267,7 +267,7 @@ ENV PORT 8000
 HEALTHCHECK --interval=10s --retries=3 CMD curl -sf http://localhost:${PORT}/health || exit 1
 ```
 
-Nothing else is required—Docker marks the container `healthy`, the CLI polls for that status, and the first user request will succeed on the very first try.
+With a healthy container and correct configuration, the first request should succeed. If not, see Troubleshooting.
 
 ---
 
