@@ -303,4 +303,4 @@ Contributions welcome—see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-All use of this software is governed by the [LICENSE](LICENSE).
+Licensed under the [Apache-2.0 license](./LICENSE).
