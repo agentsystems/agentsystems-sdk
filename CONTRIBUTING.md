@@ -129,32 +129,32 @@ Releases are driven by `./scripts/release.sh`.  The script now **requires** a de
 1. **Create a release branch** and bump version:
 
    ```bash
-   git checkout -b release/0.2.19
-   # edit pyproject.toml -> version = "0.2.19"
-   git commit -am "chore: bump version to 0.2.19"
+   git checkout -b release/X.Y.Z
+   # edit pyproject.toml -> version = "X.Y.Z"
+   git commit -am "chore: bump version to X.Y.Z"
    ```
 
 2. **Dry-run locally** (sanity check, no push):
 
    ```bash
-   ./scripts/release.sh --version 0.2.19 --dry-run
+   ./scripts/release.sh --version X.Y.Z --dry-run
    ```
 
 3. **Publish to TestPyPI**:
 
    ```bash
-   ./scripts/release.sh --version 0.2.19 --test
+   ./scripts/release.sh --version X.Y.Z --test
    # verify
-   pipx install --index-url https://test.pypi.org/simple/ agentsystems-sdk==0.2.19
+   pipx install --index-url https://test.pypi.org/simple/ agentsystems-sdk==X.Y.Z
    agentsystems --version
    ```
 
-4. Open a **PR from `release/0.2.19` → `main`**.  CI will build & install the wheel and run smoke tests.
+4. Open a **PR from `release/X.Y.Z` → `main`**.  CI will build & install the wheel and run smoke tests.
 5. After review & green CI, **merge the PR**.  The merge keeps the tag intact; the branch can be deleted.
 6. **Promote to production PyPI** from the same branch/tag:
 
 ```bash
-./scripts/release.sh --version 0.2.19 --prod
+./scripts/release.sh --version X.Y.Z --prod
 ```
 
 7. **Post-release cleanup & sync your local `main`** (optional but recommended):
@@ -168,12 +168,12 @@ git pull origin main
 git fetch --tags
 
 # delete the release branch – it has served its purpose
-git branch -d release/0.2.19
-git push origin --delete release/0.2.19
+git branch -d release/X.Y.Z
+git push origin --delete release/X.Y.Z
 
 # start the next development cycle (example)
-# edit pyproject.toml → version = "0.2.20.dev0"
-git commit -am "chore: start 0.2.20.dev0"
+# edit pyproject.toml → version = "X.Y.Z+1.dev0"
+git commit -am "chore: start X.Y.Z+1.dev0"
 git push
 ```
 
