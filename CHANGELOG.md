@@ -8,10 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Comprehensive test suite achieving 80% code coverage
+- Added test suite
 - GitHub PR and issue templates for better collaboration
 - Bug report, feature request, and documentation issue templates
-- Test coverage for all CLI commands (clean, logs, restart, status, run, init, down)
+- Test coverage for CLI commands (clean, logs, restart, status, run, init, down)
 - Improved test coverage for utility functions and progress tracker
 
 ### Changed

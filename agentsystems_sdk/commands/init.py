@@ -80,13 +80,15 @@ def init_command(
         user_name = "Admin"
 
         while True:
-            email = typer.prompt("Admin email")
+            email = typer.prompt("Set Langfuse admin email")
             if re.match(r"[^@]+@[^@]+\.[^@]+", email):
                 break
             console.print("[red]Please enter a valid email address.[/red]")
 
         while True:
-            password = typer.prompt("Admin password (min 8 chars)", hide_input=True)
+            password = typer.prompt(
+                "Set Langfuse admin password (min 8 chars)", hide_input=True
+            )
             if len(password) >= 8:
                 break
             console.print("[red]Password must be at least 8 characters.[/red]")
@@ -186,7 +188,9 @@ def init_command(
         required_images = get_required_images()
 
         if not required_images:
-            console.print("[yellow]Warning: No images to pull[/yellow]")
+            # No images configured for pulling during init - this is expected
+            # Images will be pulled automatically during 'agentsystems up' instead
+            pass
         else:
             pull_task = progress.add_task(
                 "Pulling Docker images", total=len(required_images)
