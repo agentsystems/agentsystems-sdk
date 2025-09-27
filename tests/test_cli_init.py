@@ -35,13 +35,8 @@ class TestInitCommand:
         # Setup
         mock_stdin.isatty.return_value = True  # Interactive mode
 
-        # Mock user inputs via prompt
-        mock_prompt.side_effect = [
-            "test-project",  # Directory prompt
-            "TestOrg",  # Organization name
-            "admin@test.com",  # Email
-            "password123",  # Password
-        ]
+        # Mock user inputs via prompt - only directory prompt now
+        mock_prompt.return_value = "test-project"
 
         # Mock required images
         mock_get_images.return_value = [
@@ -243,25 +238,18 @@ class TestInitCommand:
 
     @patch("agentsystems_sdk.commands.init.typer.prompt")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
-    def test_init_command_email_validation(
+    def test_init_command_auto_generates_credentials(
         self,
         mock_stdin,
         mock_prompt,
         tmp_path,
     ):
-        """Test init command validates email in interactive mode."""
+        """Test init command auto-generates email and password."""
         # Setup
         mock_stdin.isatty.return_value = True
 
-        # Mock user inputs - invalid email first, then valid
-        mock_prompt.side_effect = [
-            str(tmp_path / "test-project"),  # Directory
-            "TestOrg",  # Organization name
-            "invalid-email",  # Invalid email
-            "admin@test.com",  # Valid email
-            "password123",  # Password
-            "",  # Docker token
-        ]
+        # Mock user input - only directory prompt now
+        mock_prompt.return_value = str(tmp_path / "test-project")
 
         # Mock other dependencies to avoid actual execution
         with patch("agentsystems_sdk.commands.init.shutil.copytree"):
@@ -270,39 +258,43 @@ class TestInitCommand:
                     "agentsystems_sdk.commands.init.get_required_images",
                     return_value=[],
                 ):
-                    with patch("agentsystems_sdk.commands.init.set_key"):
+                    with patch(
+                        "agentsystems_sdk.commands.init.set_key"
+                    ) as mock_set_key:
                         # Execute
                         init_command(project_dir=None)
 
-                        # Verify email prompt was called twice (invalid, then valid)
-                        email_calls = [
-                            call
-                            for call in mock_prompt.call_args_list
-                            if "email" in str(call).lower()
-                        ]
-                        assert len(email_calls) >= 2
+                        # Verify auto-generated credentials were set
+                        set_key_calls = {
+                            call[0][1]: call[0][2]
+                            for call in mock_set_key.call_args_list
+                        }
 
-    @patch("agentsystems_sdk.commands.init.typer.prompt")
+                        # Check email is the generic one
+                        assert (
+                            set_key_calls["LANGFUSE_INIT_USER_EMAIL"]
+                            == '"admin@localhost.local"'
+                        )
+
+                        # Check password was generated (16 alphanumeric chars)
+                        password = set_key_calls["LANGFUSE_INIT_USER_PASSWORD"].strip(
+                            '"'
+                        )
+                        assert len(password) == 16
+                        assert password.isalnum()
+
+    @patch("agentsystems_sdk.commands.init.generate_secure_password")
     @patch("agentsystems_sdk.commands.init.sys.stdin")
-    def test_init_command_password_validation(
+    def test_init_command_password_generation(
         self,
         mock_stdin,
-        mock_prompt,
+        mock_generate_password,
         tmp_path,
     ):
-        """Test init command validates password length in interactive mode."""
+        """Test init command generates secure password automatically."""
         # Setup
         mock_stdin.isatty.return_value = True
-
-        # Mock user inputs - short password first, then valid
-        mock_prompt.side_effect = [
-            str(tmp_path / "test-project"),  # Directory
-            "TestOrg",  # Organization name
-            "admin@test.com",  # Email
-            "short",  # Password too short
-            "password123",  # Valid password
-            "",  # Docker token
-        ]
+        mock_generate_password.return_value = "SecurePass123456"
 
         # Mock other dependencies to avoid actual execution
         with patch("agentsystems_sdk.commands.init.shutil.copytree"):
@@ -311,14 +303,21 @@ class TestInitCommand:
                     "agentsystems_sdk.commands.init.get_required_images",
                     return_value=[],
                 ):
-                    with patch("agentsystems_sdk.commands.init.set_key"):
-                        # Execute
-                        init_command(project_dir=None)
+                    with patch(
+                        "agentsystems_sdk.commands.init.set_key"
+                    ) as mock_set_key:
+                        # Execute with explicit project_dir to avoid prompt
+                        init_command(project_dir=tmp_path / "test-project")
 
-                        # Verify password prompt was called twice (short, then valid)
-                        password_calls = [
-                            call
-                            for call in mock_prompt.call_args_list
-                            if "password" in str(call).lower()
-                        ]
-                        assert len(password_calls) >= 2
+                        # Verify password was generated
+                        mock_generate_password.assert_called_once()
+
+                        # Verify the generated password was set
+                        set_key_calls = {
+                            call[0][1]: call[0][2]
+                            for call in mock_set_key.call_args_list
+                        }
+                        assert (
+                            set_key_calls["LANGFUSE_INIT_USER_PASSWORD"]
+                            == '"SecurePass123456"'
+                        )

@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import pathlib
-import re
+import secrets
 import shutil
+import string
 import sys
 import uuid
 from typing import Optional
@@ -28,6 +29,20 @@ from ..utils import (
 )
 
 console = Console()
+
+
+def generate_secure_password(length: int = 16) -> str:
+    """Generate a secure random alphanumeric password.
+
+    Args:
+        length: Password length (default 16)
+
+    Returns:
+        A secure random password containing letters and digits
+    """
+    # Use alphanumeric characters only for simplicity and compatibility
+    alphabet = string.ascii_letters + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 def init_command(
@@ -69,42 +84,23 @@ def init_command(
 
     # Prompt for missing tokens only if running interactively
 
-    # ---------- Langfuse initial setup prompts ----------
-    if sys.stdin.isatty():
-        console.print("\n[bold cyan]Langfuse initial setup[/bold cyan]")
+    # ---------- Langfuse initial setup ----------
+    # Auto-generate credentials for better onboarding experience
+    org_name = "Default Organization"
+    org_id = "default"
+    project_id = "default"
+    project_name = "Default"
+    user_name = "Admin"
+    email = "admin@localhost.local"  # Generic email for local deployment
+    password = generate_secure_password()  # Auto-generated secure password
+    pub_key = f"pk-lf-{uuid.uuid4()}"
+    secret_key = f"sk-lf-{uuid.uuid4()}"
 
-        org_name = typer.prompt("Organization name", default="ExampleOrg")
-        org_id = re.sub(r"[^a-z0-9]+", "-", org_name.lower()).strip("-") or "org"
-        project_id = "default"
-        project_name = "Default"
-        user_name = "Admin"
-
-        while True:
-            email = typer.prompt("Set Langfuse admin email")
-            if re.match(r"[^@]+@[^@]+\.[^@]+", email):
-                break
-            console.print("[red]Please enter a valid email address.[/red]")
-
-        while True:
-            password = typer.prompt(
-                "Set Langfuse admin password (min 8 chars)", hide_input=True
-            )
-            if len(password) >= 8:
-                break
-            console.print("[red]Password must be at least 8 characters.[/red]")
-
-        pub_key = f"pk-lf-{uuid.uuid4()}"
-        secret_key = f"sk-lf-{uuid.uuid4()}"
-    else:
-        org_name = "ExampleOrg"
-        org_id = "org"
-        project_id = "default"
-        project_name = "Default"
-        user_name = "Admin"
-        email = ""
-        password = ""
-        pub_key = f"pk-lf-{uuid.uuid4()}"
-        secret_key = f"sk-lf-{uuid.uuid4()}"
+    # Inform user about auto-generated credentials
+    # TODO: Uncomment once Langfuse documentation is available
+    # if sys.stdin.isatty():
+    #     console.print("\n[bold cyan]✅ Langfuse credentials auto-generated[/bold cyan]")
+    #     console.print("  Credentials saved to .env file and available in the UI configuration section")
 
     # Get the path to the scaffold directory
     import os
