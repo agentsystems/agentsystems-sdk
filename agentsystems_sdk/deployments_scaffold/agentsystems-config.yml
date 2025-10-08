@@ -2,7 +2,7 @@ config_version: 1
 
 # Registry connections for pulling agent images
 registry_connections:
-  agentsystems_public:
+  dockerhub_public:
     url: docker.io
     enabled: true
     auth:
@@ -13,7 +13,7 @@ agents:
 - name: hello-world-agent
   repo: agentsystems/hello-world-agent
   tag: latest
-  registry_connection: agentsystems_public
+  registry_connection: dockerhub_public
   labels:
     agent.port: '8000'
   overrides:
