@@ -241,13 +241,12 @@ def setup_agents_from_config(
         )
 
     for agent in cfg.agents:
-        # Derive service/container name from image reference (basename without tag)
-        image_ref = agent.image
-        service_name = image_ref.rsplit("/", 1)[-1].split(":", 1)[0]
-        cname = service_name
+        # Use agent name as container name and service label for consistent routing
+        cname = agent.name
+        service_name = agent.name
 
         # Skip agents whose images failed to pull
-        if image_ref in failed_pulls:
+        if agent.image in failed_pulls:
             console.print(f"[yellow]⊗ Skipping {cname} - image pull failed[/yellow]")
             continue
 
