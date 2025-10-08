@@ -100,6 +100,9 @@ def setup_agents_from_config(
         if agent.registry:
             agents_by_reg[agent.registry].append(agent)
 
+    # Track images that failed to pull so we can skip starting their containers
+    failed_pulls = []
+
     def _image_exists(ref: str, env: dict) -> bool:
         """Return True if *ref* image is already present (using given env)."""
         return (
@@ -204,7 +207,23 @@ def setup_agents_from_config(
                     console.print(f"[green]✓ {img} already present.[/green]")
                     continue
                 console.print(f"[cyan]⇣ pulling {img}…[/cyan]")
-                subprocess.run(["docker", "pull", img], check=True, env=env)
+                try:
+                    subprocess.run(["docker", "pull", img], check=True, env=env)
+                except subprocess.CalledProcessError:
+                    console.print(f"[red]✗ Failed to pull {img}[/red]")
+                    console.print(
+                        "[yellow]  This agent will be skipped. Common causes:[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  - Missing or incorrect registry credentials[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  - Image does not exist or is private[/yellow]"
+                    )
+                    console.print(
+                        "[yellow]  Fix: Update registry credentials in the UI at http://localhost:3001/configuration/registries[/yellow]"
+                    )
+                    failed_pulls.append(img)
 
     # Reset env_base for container startup (credentials no longer needed)
     env_base = os.environ.copy()
@@ -226,6 +245,11 @@ def setup_agents_from_config(
         image_ref = agent.image
         service_name = image_ref.rsplit("/", 1)[-1].split(":", 1)[0]
         cname = service_name
+
+        # Skip agents whose images failed to pull
+        if image_ref in failed_pulls:
+            console.print(f"[yellow]⊗ Skipping {cname} - image pull failed[/yellow]")
+            continue
 
         # Remove legacy-named container if it exists (agent-<name>)
         legacy_name = f"agent-{agent.name}"
@@ -326,6 +350,23 @@ def setup_agents_from_config(
                 console.print(f"[green]✓ {cname} ready.[/green]")
             else:
                 console.print(f"[red]✗ {cname} failed health check (timeout).[/red]")
+
+    # Show summary if any agents failed to start
+    if failed_pulls:
+        console.print(
+            "\n[yellow]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/yellow]"
+        )
+        console.print(
+            f"[yellow]⚠  {len(failed_pulls)} agent(s) skipped due to pull failures:[/yellow]"
+        )
+        for img in failed_pulls:
+            console.print(f"[yellow]   • {img}[/yellow]")
+        console.print(
+            "[yellow]   Fix registry credentials at: http://localhost:3001/configuration/registries[/yellow]"
+        )
+        console.print(
+            "[yellow]━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━[/yellow]\n"
+        )
 
 
 def up_command(
