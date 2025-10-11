@@ -135,6 +135,143 @@ def logout_command() -> None:
         raise typer.Exit(1)
 
 
+@hub_commands.command(name="whoami")
+def whoami_command() -> None:
+    """Show current logged-in developer identity."""
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
+        raise typer.Exit(1)
+
+    hub_url = get_hub_url()
+
+    try:
+        response = requests.get(
+            f"{hub_url}/auth/verify",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        console.print("\n[cyan]Logged in as:[/cyan]")
+        console.print(f"  Developer: {data.get('developer_name')}")
+        console.print(f"  Email: {data.get('email')}")
+        if data.get("api_key_label"):
+            console.print(f"  API Key: {data.get('api_key_label')}")
+        console.print(f"  Hub URL: {hub_url}")
+        console.print()
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
+        else:
+            console.print(f"[red]✗[/red] HTTP error: {e.response.status_code}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="validate")
+def validate_command() -> None:
+    """Validate agent.yaml without publishing."""
+    # Look for agent.yaml in current directory
+    agent_yaml_path = pathlib.Path.cwd() / "agent.yaml"
+    if not agent_yaml_path.exists():
+        console.print("[red]✗[/red] No agent.yaml found in current directory.")
+        raise typer.Exit(1)
+
+    # Load agent.yaml
+    try:
+        with agent_yaml_path.open("r") as f:
+            agent_config = yaml.safe_load(f)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Failed to read agent.yaml: {e}")
+        raise typer.Exit(1)
+
+    console.print("\n[cyan]Validating agent.yaml...[/cyan]\n")
+
+    # Track validation status
+    has_errors = False
+
+    # Validate required fields
+    required_fields = ["developer", "name", "description"]
+    for field in required_fields:
+        if field in agent_config and agent_config[field]:
+            console.print(f"[green]✓[/green] {field}: {agent_config[field]}")
+        else:
+            console.print(f"[red]✗[/red] {field}: missing or empty")
+            has_errors = True
+
+    # Optional fields
+    optional_fields = [
+        "version",
+        "image_repository_url",
+        "source_repository_url",
+        "listing_status",
+        "image_repository_access",
+        "source_repository_access",
+        "model_dependencies",
+    ]
+
+    console.print("\n[cyan]Optional fields:[/cyan]")
+    for field in optional_fields:
+        value = agent_config.get(field)
+        if value:
+            if isinstance(value, list):
+                console.print(f"  {field}: {', '.join(value)}")
+            else:
+                console.print(f"  {field}: {value}")
+        else:
+            console.print(f"  {field}: (not set)")
+
+    # Check developer name against authenticated user
+    api_key = get_api_key()
+    if api_key:
+        hub_url = get_hub_url()
+        try:
+            response = requests.get(
+                f"{hub_url}/auth/verify",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10.0,
+            )
+            response.raise_for_status()
+            data = response.json()
+            authenticated_developer = data.get("developer_name")
+
+            console.print("\n[cyan]Developer verification:[/cyan]")
+            if agent_config.get("developer") == authenticated_developer:
+                console.print(
+                    f"[green]✓[/green] Developer matches logged-in user: {authenticated_developer}"
+                )
+            else:
+                console.print("[yellow]⚠[/yellow] Developer mismatch:")
+                console.print(f"  agent.yaml has: {agent_config.get('developer')}")
+                console.print(f"  Logged in as: {authenticated_developer}")
+                console.print(
+                    "  Update agent.yaml or login with the correct account to publish."
+                )
+        except Exception:
+            console.print(
+                "\n[yellow]⚠[/yellow] Could not verify developer (not logged in or API unavailable)"
+            )
+    else:
+        console.print(
+            "\n[yellow]⚠[/yellow] Not logged in - skipping developer verification"
+        )
+
+    # Final status
+    console.print()
+    if has_errors:
+        console.print("[red]✗[/red] Validation failed - fix errors above")
+        raise typer.Exit(1)
+    else:
+        console.print("[green]✓[/green] Validation passed")
+
+
 @hub_commands.command(name="list")
 def list_command() -> None:
     """List all your agents in the hub."""
