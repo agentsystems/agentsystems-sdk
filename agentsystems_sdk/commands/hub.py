@@ -24,7 +24,7 @@ hub_commands = typer.Typer(
 # Config file for storing API key
 CONFIG_DIR = pathlib.Path.home() / ".agentsystems"
 HUB_CONFIG_FILE = CONFIG_DIR / "hub-config.yml"
-DEFAULT_HUB_URL = "http://localhost:8000"
+DEFAULT_HUB_URL = "https://hub-api.agentsystems.ai"
 
 
 def get_hub_config() -> dict:
