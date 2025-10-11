@@ -1,0 +1,355 @@
+"""Hub commands for publishing and managing agents in the AgentSystems Hub."""
+
+from __future__ import annotations
+
+import os
+import pathlib
+from typing import Optional
+
+import requests
+import typer
+import yaml
+from rich.console import Console
+from rich.table import Table
+
+console = Console()
+
+# Create hub sub-app
+hub_commands = typer.Typer(
+    name="hub",
+    help="Publish and manage agents in the AgentSystems Hub",
+    no_args_is_help=True,
+)
+
+# Config file for storing API key
+CONFIG_DIR = pathlib.Path.home() / ".agentsystems"
+HUB_CONFIG_FILE = CONFIG_DIR / "hub-config.yml"
+DEFAULT_HUB_URL = "http://localhost:8000"
+
+
+def get_hub_config() -> dict:
+    """Load hub configuration from file."""
+    if not HUB_CONFIG_FILE.exists():
+        return {}
+    with HUB_CONFIG_FILE.open("r") as f:
+        return yaml.safe_load(f) or {}
+
+
+def save_hub_config(config: dict) -> None:
+    """Save hub configuration to file."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    with HUB_CONFIG_FILE.open("w") as f:
+        yaml.safe_dump(config, f)
+
+
+def get_api_key() -> Optional[str]:
+    """Get API key from config or environment."""
+    # Check environment first
+    api_key = os.getenv("AGENTSYSTEMS_HUB_API_KEY")
+    if api_key:
+        return api_key
+
+    # Check config file
+    config = get_hub_config()
+    return config.get("api_key")
+
+
+def get_hub_url() -> str:
+    """Get hub URL from config or environment."""
+    # Check environment first
+    hub_url = os.getenv("AGENTSYSTEMS_HUB_URL")
+    if hub_url:
+        return hub_url
+
+    # Check config file
+    config = get_hub_config()
+    return config.get("hub_url", DEFAULT_HUB_URL)
+
+
+def get_developer_name() -> Optional[str]:
+    """Get cached developer name from config."""
+    config = get_hub_config()
+    return config.get("developer_name")
+
+
+@hub_commands.command(name="login")
+def login_command(
+    api_key: str = typer.Option(
+        ..., prompt="Hub API key", hide_input=True, help="Your AgentSystems Hub API key"
+    ),
+    hub_url: str = typer.Option(DEFAULT_HUB_URL, help="Hub API URL"),
+) -> None:
+    """Store your AgentSystems Hub API key for publishing agents."""
+
+    # Verify the API key works
+    try:
+        response = requests.get(
+            f"{hub_url}/auth/verify",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        console.print(
+            f"[green]✓[/green] Successfully authenticated as: {data.get('email')}"
+        )
+        console.print(f"[green]✓[/green] Developer name: {data.get('developer_name')}")
+
+        # Save to config
+        config = get_hub_config()
+        config["api_key"] = api_key
+        config["hub_url"] = hub_url
+        config["user_uid"] = data.get("user_uid")
+        config["developer_name"] = data.get("developer_name")
+        config["email"] = data.get("email")
+        config["api_key_label"] = data.get("api_key_label")
+        save_hub_config(config)
+
+        console.print(f"\n[green]✓[/green] API key saved to {HUB_CONFIG_FILE}")
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print("[red]✗[/red] Invalid API key")
+        else:
+            console.print(f"[red]✗[/red] HTTP error: {e.response.status_code}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="logout")
+def logout_command() -> None:
+    """Remove stored API key and credentials."""
+    if not HUB_CONFIG_FILE.exists():
+        console.print("[yellow]Not logged in.[/yellow]")
+        return
+
+    try:
+        HUB_CONFIG_FILE.unlink()
+        console.print("[green]✓[/green] Logged out successfully")
+        console.print(f"[green]✓[/green] Removed {HUB_CONFIG_FILE}")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error removing config: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="list")
+def list_command() -> None:
+    """List all your agents in the hub."""
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
+        raise typer.Exit(1)
+
+    hub_url = get_hub_url()
+
+    try:
+        response = requests.get(
+            f"{hub_url}/agents/me",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        agents = data.get("agents", [])
+        total = data.get("total", 0)
+
+        if not agents:
+            console.print("\n[yellow]No agents found.[/yellow]")
+            console.print(
+                "Publish your first agent with: [cyan]agentsystems hub publish[/cyan]"
+            )
+            return
+
+        # Create table
+        table = Table(
+            title=f"Your Agents ({total})",
+            show_header=True,
+            header_style="bold magenta",
+        )
+        table.add_column("Name", style="cyan")
+        table.add_column("Description")
+        table.add_column("Listing", justify="center")
+        table.add_column("Image Access", justify="center")
+        table.add_column("Source Access", justify="center")
+
+        for agent in agents:
+            listing_badge = (
+                "✓ Listed" if agent["listing_status"] == "listed" else "✗ Unlisted"
+            )
+            listing_style = "green" if agent["listing_status"] == "listed" else "yellow"
+
+            image_access = agent.get("image_repository_access", "private")
+            source_access = agent.get("source_repository_access", "private")
+
+            table.add_row(
+                agent["name"],
+                agent.get("description", "")[:50]
+                + ("..." if len(agent.get("description", "")) > 50 else ""),
+                f"[{listing_style}]{listing_badge}[/{listing_style}]",
+                image_access.capitalize(),
+                source_access.capitalize(),
+            )
+
+        console.print("\n", table, "\n")
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
+        else:
+            console.print(f"[red]✗[/red] HTTP error: {e.response.status_code}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="publish")
+def publish_command(
+    name: str = typer.Option(..., help="Agent name"),
+    description: Optional[str] = typer.Option(None, help="Agent description"),
+    image_url: Optional[str] = typer.Option(None, help="Container image URL"),
+    source_url: Optional[str] = typer.Option(None, help="Source repository URL"),
+    listed: bool = typer.Option(False, help="Make agent publicly listed"),
+    image_public: bool = typer.Option(False, help="Make image repository public"),
+    source_public: bool = typer.Option(False, help="Make source repository public"),
+) -> None:
+    """Publish or update an agent in the hub."""
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
+        raise typer.Exit(1)
+
+    hub_url = get_hub_url()
+
+    # Build request payload
+    payload = {
+        "name": name,
+        "description": description,
+        "image_repository_url": image_url,
+        "source_repository_url": source_url,
+        "listing_status": "listed" if listed else "unlisted",
+        "image_repository_access": "public" if image_public else "private",
+        "source_repository_access": "public" if source_public else "private",
+    }
+
+    try:
+        # Try to create first
+        response = requests.post(
+            f"{hub_url}/agents",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json=payload,
+            timeout=10.0,
+        )
+
+        if response.status_code == 409:
+            # Agent exists, update instead
+            console.print(
+                f"[yellow]Agent '{name}' already exists. Updating...[/yellow]"
+            )
+
+            # Get developer name from cache
+            developer_name = get_developer_name()
+            if not developer_name:
+                console.print(
+                    "[red]✗[/red] Developer name not found. Run 'agentsystems hub login' again."
+                )
+                raise typer.Exit(1)
+
+            # Update agent
+            response = requests.put(
+                f"{hub_url}/agents/{developer_name}/{name}",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=payload,
+                timeout=10.0,
+            )
+
+        response.raise_for_status()
+        agent = response.json()
+
+        console.print(
+            f"\n[green]✓[/green] Successfully published agent: [cyan]{agent['name']}[/cyan]"
+        )
+        if agent.get("description"):
+            console.print(f"  Description: {agent['description']}")
+        if agent.get("image_repository_url"):
+            console.print(f"  Image: {agent['image_repository_url']}")
+        if agent.get("source_repository_url"):
+            console.print(f"  Source: {agent['source_repository_url']}")
+        console.print(
+            f"  Listing: {'Listed (public)' if agent['listing_status'] == 'listed' else 'Unlisted (private)'}"
+        )
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
+        else:
+            error_detail = e.response.json().get("detail", str(e))
+            console.print(f"[red]✗[/red] Error: {error_detail}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="delete")
+def delete_command(
+    name: str = typer.Argument(..., help="Agent name to delete"),
+    force: bool = typer.Option(False, "--force", "-f", help="Skip confirmation"),
+) -> None:
+    """Delete an agent from the hub."""
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
+        raise typer.Exit(1)
+
+    hub_url = get_hub_url()
+
+    if not force:
+        confirm = typer.confirm(f"Are you sure you want to delete '{name}'?")
+        if not confirm:
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+    try:
+        # Get developer name from cache
+        developer_name = get_developer_name()
+        if not developer_name:
+            console.print(
+                "[red]✗[/red] Developer name not found. Run 'agentsystems hub login' again."
+            )
+            raise typer.Exit(1)
+
+        # Delete agent
+        response = requests.delete(
+            f"{hub_url}/agents/{developer_name}/{name}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+
+        console.print(
+            f"[green]✓[/green] Successfully deleted agent: [cyan]{name}[/cyan]"
+        )
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
+        elif e.response.status_code == 404:
+            console.print(f"[red]✗[/red] Agent '{name}' not found")
+        else:
+            error_detail = e.response.json().get("detail", str(e))
+            console.print(f"[red]✗[/red] Error: {error_detail}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)

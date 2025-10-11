@@ -11,6 +11,7 @@ from .artifacts import artifacts_path_command
 from .clean import clean_command
 from .update import update_command
 from .version import version_command, versions_command
+from .hub import hub_commands
 
 __all__ = [
     "init_command",
@@ -25,4 +26,5 @@ __all__ = [
     "update_command",
     "version_command",
     "versions_command",
+    "hub_commands",
 ]
