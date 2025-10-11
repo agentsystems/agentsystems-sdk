@@ -241,18 +241,36 @@ def publish_command() -> None:
             console.print(f"[red]✗[/red] Missing required field in agent.yaml: {field}")
             raise typer.Exit(1)
 
-    # Get developer name from cache (must match agent.yaml)
-    cached_developer = get_developer_name()
-    if not cached_developer:
-        console.print(
-            "[red]✗[/red] Developer name not found. Run 'agentsystems hub login' again."
+    # Verify API key and get authenticated developer name (don't trust cached config)
+    try:
+        verify_response = requests.get(
+            f"{hub_url}/auth/verify",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0,
         )
+        verify_response.raise_for_status()
+        verify_data = verify_response.json()
+        authenticated_developer = verify_data.get("developer_name")
+
+        if not authenticated_developer:
+            console.print("[red]✗[/red] Could not verify developer identity.")
+            raise typer.Exit(1)
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
+        else:
+            console.print(f"[red]✗[/red] Verification failed: {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Verification error: {e}")
         raise typer.Exit(1)
 
-    if agent_config["developer"] != cached_developer:
+    if agent_config["developer"] != authenticated_developer:
         console.print("[red]✗[/red] Developer mismatch!")
         console.print(f"  agent.yaml has: {agent_config['developer']}")
-        console.print(f"  Logged in as: {cached_developer}")
+        console.print(f"  Logged in as: {authenticated_developer}")
         console.print("\nUpdate agent.yaml or login with the correct account.")
         raise typer.Exit(1)
 
@@ -273,6 +291,24 @@ def publish_command() -> None:
         ),
     }
 
+    # Show what will be published
+    console.print("\n[cyan]Publishing agent with the following settings:[/cyan]")
+    console.print(f"  Developer: {authenticated_developer}")
+    console.print(f"  Name: {name}")
+    console.print(f"  Description: {payload.get('description') or '(empty)'}")
+    console.print(f"  Image URL: {payload.get('image_repository_url') or '(empty)'}")
+    console.print(f"  Source URL: {payload.get('source_repository_url') or '(empty)'}")
+    console.print(f"  Listing: {payload.get('listing_status')}")
+    console.print(f"  Image Access: {payload.get('image_repository_access')}")
+    console.print(f"  Source Access: {payload.get('source_repository_access')}")
+    console.print()
+
+    # Ask for confirmation
+    confirm = typer.confirm("Publish this agent to the hub?")
+    if not confirm:
+        console.print("[yellow]Publish cancelled.[/yellow]")
+        raise typer.Exit(0)
+
     try:
         # Try to create first
         response = requests.post(
@@ -289,7 +325,7 @@ def publish_command() -> None:
             # Fetch current agent settings
             try:
                 current_response = requests.get(
-                    f"{hub_url}/agents/{cached_developer}/{name}",
+                    f"{hub_url}/agents/{authenticated_developer}/{name}",
                     headers={"Authorization": f"Bearer {api_key}"},
                     timeout=10.0,
                 )
@@ -345,7 +381,7 @@ def publish_command() -> None:
 
             # Update agent
             response = requests.put(
-                f"{hub_url}/agents/{cached_developer}/{name}",
+                f"{hub_url}/agents/{authenticated_developer}/{name}",
                 headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
                 timeout=10.0,
