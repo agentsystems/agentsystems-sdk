@@ -210,16 +210,8 @@ def list_command() -> None:
 
 
 @hub_commands.command(name="publish")
-def publish_command(
-    name: str = typer.Option(..., help="Agent name"),
-    description: Optional[str] = typer.Option(None, help="Agent description"),
-    image_url: Optional[str] = typer.Option(None, help="Container image URL"),
-    source_url: Optional[str] = typer.Option(None, help="Source repository URL"),
-    listed: bool = typer.Option(False, help="Make agent publicly listed"),
-    image_public: bool = typer.Option(False, help="Make image repository public"),
-    source_public: bool = typer.Option(False, help="Make source repository public"),
-) -> None:
-    """Publish or update an agent in the hub."""
+def publish_command() -> None:
+    """Publish or update an agent in the hub from agent.yaml."""
     api_key = get_api_key()
     if not api_key:
         console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
@@ -227,15 +219,58 @@ def publish_command(
 
     hub_url = get_hub_url()
 
+    # Look for agent.yaml in current directory
+    agent_yaml_path = pathlib.Path.cwd() / "agent.yaml"
+    if not agent_yaml_path.exists():
+        console.print("[red]✗[/red] No agent.yaml found in current directory.")
+        console.print("Run this command from your agent directory.")
+        raise typer.Exit(1)
+
+    # Load agent.yaml
+    try:
+        with agent_yaml_path.open("r") as f:
+            agent_config = yaml.safe_load(f)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Failed to read agent.yaml: {e}")
+        raise typer.Exit(1)
+
+    # Validate required fields
+    required_fields = ["developer", "name", "description"]
+    for field in required_fields:
+        if field not in agent_config:
+            console.print(f"[red]✗[/red] Missing required field in agent.yaml: {field}")
+            raise typer.Exit(1)
+
+    # Get developer name from cache (must match agent.yaml)
+    cached_developer = get_developer_name()
+    if not cached_developer:
+        console.print(
+            "[red]✗[/red] Developer name not found. Run 'agentsystems hub login' again."
+        )
+        raise typer.Exit(1)
+
+    if agent_config["developer"] != cached_developer:
+        console.print("[red]✗[/red] Developer mismatch!")
+        console.print(f"  agent.yaml has: {agent_config['developer']}")
+        console.print(f"  Logged in as: {cached_developer}")
+        console.print("\nUpdate agent.yaml or login with the correct account.")
+        raise typer.Exit(1)
+
+    name = agent_config["name"]
+
     # Build request payload
     payload = {
         "name": name,
-        "description": description,
-        "image_repository_url": image_url,
-        "source_repository_url": source_url,
-        "listing_status": "listed" if listed else "unlisted",
-        "image_repository_access": "public" if image_public else "private",
-        "source_repository_access": "public" if source_public else "private",
+        "description": agent_config.get("description"),
+        "image_repository_url": agent_config.get("image_repository_url"),
+        "source_repository_url": agent_config.get("source_repository_url"),
+        "listing_status": agent_config.get("listing_status", "unlisted"),
+        "image_repository_access": agent_config.get(
+            "image_repository_access", "private"
+        ),
+        "source_repository_access": agent_config.get(
+            "source_repository_access", "private"
+        ),
     }
 
     try:
@@ -248,22 +283,69 @@ def publish_command(
         )
 
         if response.status_code == 409:
-            # Agent exists, update instead
-            console.print(
-                f"[yellow]Agent '{name}' already exists. Updating...[/yellow]"
-            )
+            # Agent exists, fetch current settings and compare
+            console.print(f"[yellow]Agent '{name}' already exists.[/yellow]")
 
-            # Get developer name from cache
-            developer_name = get_developer_name()
-            if not developer_name:
-                console.print(
-                    "[red]✗[/red] Developer name not found. Run 'agentsystems hub login' again."
+            # Fetch current agent settings
+            try:
+                current_response = requests.get(
+                    f"{hub_url}/agents/{cached_developer}/{name}",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10.0,
                 )
-                raise typer.Exit(1)
+                current_response.raise_for_status()
+                current_agent = current_response.json()
+
+                # Compare settings that will be overwritten
+                changes = []
+                fields_to_check = [
+                    ("description", "Description"),
+                    ("image_repository_url", "Image URL"),
+                    ("source_repository_url", "Source URL"),
+                    ("listing_status", "Listing Status"),
+                    ("image_repository_access", "Image Access"),
+                    ("source_repository_access", "Source Access"),
+                ]
+
+                for field, label in fields_to_check:
+                    current_value = current_agent.get(field)
+                    new_value = payload.get(field)
+                    if current_value != new_value:
+                        changes.append(
+                            {
+                                "label": label,
+                                "current": current_value or "(empty)",
+                                "new": new_value or "(empty)",
+                            }
+                        )
+
+                if changes:
+                    console.print(
+                        "\n[yellow]Warning: Publishing will overwrite the following hub settings:[/yellow]"
+                    )
+                    for change in changes:
+                        console.print(
+                            f"  - {change['label']}: {change['current']} → {change['new']}"
+                        )
+                    console.print()
+
+                    # Ask for confirmation
+                    confirm = typer.confirm("Continue with publish?")
+                    if not confirm:
+                        console.print("[yellow]Publish cancelled.[/yellow]")
+                        raise typer.Exit(0)
+                else:
+                    console.print("[green]No changes detected. Updating...[/green]")
+
+            except requests.HTTPError as e:
+                console.print(
+                    f"[yellow]Could not fetch current agent settings: {e}[/yellow]"
+                )
+                console.print("[yellow]Proceeding with update...[/yellow]")
 
             # Update agent
             response = requests.put(
-                f"{hub_url}/agents/{developer_name}/{name}",
+                f"{hub_url}/agents/{cached_developer}/{name}",
                 headers={"Authorization": f"Bearer {api_key}"},
                 json=payload,
                 timeout=10.0,
