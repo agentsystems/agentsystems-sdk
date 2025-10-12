@@ -547,7 +547,17 @@ def publish_command() -> None:
             )
         else:
             error_detail = e.response.json().get("detail", str(e))
-            console.print(f"[red]✗[/red] Error: {error_detail}")
+
+            # Special handling for listed agents error
+            if "Listed agents not enabled" in error_detail:
+                console.print(
+                    "[red]✗[/red] Error: Listed agents disabled for this developer"
+                )
+                console.print(
+                    "To publish as listed, run: [cyan]agentsystems hub allow-listed --enable[/cyan]"
+                )
+            else:
+                console.print(f"[red]✗[/red] Error: {error_detail}")
         raise typer.Exit(1)
     except Exception as e:
         console.print(f"[red]✗[/red] Error: {e}")
@@ -601,6 +611,94 @@ def delete_command(
             )
         elif e.response.status_code == 404:
             console.print(f"[red]✗[/red] Agent '{name}' not found")
+        else:
+            error_detail = e.response.json().get("detail", str(e))
+            console.print(f"[red]✗[/red] Error: {error_detail}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]✗[/red] Error: {e}")
+        raise typer.Exit(1)
+
+
+@hub_commands.command(name="allow-listed")
+def allow_listed_command(
+    enable: bool = typer.Option(False, "--enable", help="Enable listed agents"),
+    disable: bool = typer.Option(False, "--disable", help="Disable listed agents"),
+    cascade: bool = typer.Option(
+        False, "--cascade", help="When disabling, unlist all existing agents"
+    ),
+    preserve: bool = typer.Option(
+        False, "--preserve", help="When disabling, keep existing agents as-is"
+    ),
+) -> None:
+    """Enable or disable listed agents for your developer account."""
+    api_key = get_api_key()
+    if not api_key:
+        console.print("[red]✗[/red] Not logged in. Run 'agentsystems hub login' first.")
+        raise typer.Exit(1)
+
+    hub_url = get_hub_url()
+
+    # Validate flags
+    if enable and disable:
+        console.print("[red]✗[/red] Cannot use both --enable and --disable")
+        raise typer.Exit(1)
+
+    if not enable and not disable:
+        console.print("[red]✗[/red] Must specify either --enable or --disable")
+        raise typer.Exit(1)
+
+    if enable and (cascade or preserve):
+        console.print("[red]✗[/red] --cascade and --preserve only apply when disabling")
+        raise typer.Exit(1)
+
+    if disable and not (cascade or preserve):
+        console.print(
+            "[red]✗[/red] When disabling, must specify either --cascade or --preserve"
+        )
+        raise typer.Exit(1)
+
+    if cascade and preserve:
+        console.print("[red]✗[/red] Cannot use both --cascade and --preserve")
+        raise typer.Exit(1)
+
+    try:
+        # Update developer settings
+        response = requests.patch(
+            f"{hub_url}/developers/me",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"allow_listed_agents": enable},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+
+        if enable:
+            console.print("[green]✓[/green] Listed agents enabled")
+            console.print("  Agents can now be published with listing_status: listed")
+        else:
+            if cascade:
+                # Unlist all existing agents
+                unlist_response = requests.post(
+                    f"{hub_url}/developers/me/unlist-all",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10.0,
+                )
+                unlist_response.raise_for_status()
+                unlist_data = unlist_response.json()
+                unlisted_count = unlist_data.get("unlisted_count", 0)
+
+                console.print("[green]✓[/green] Listed agents disabled")
+                console.print(f"  Unlisted {unlisted_count} agent(s)")
+            else:  # preserve
+                console.print("[green]✓[/green] Listed agents disabled")
+                console.print("  Existing listed agents remain listed")
+                console.print("  New agents cannot be published as listed")
+
+    except requests.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print(
+                "[red]✗[/red] Invalid or expired API key. Run 'agentsystems hub login' again."
+            )
         else:
             error_detail = e.response.json().get("detail", str(e))
             console.print(f"[red]✗[/red] Error: {error_detail}")
