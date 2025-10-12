@@ -83,6 +83,17 @@ All commands are available through `agentsystems` (or the shorter alias `agntsys
 | `agentsystems run AGENT PAYLOAD` | Invoke an agent with JSON payload and optional file uploads, stream progress, and return results. |
 | `agentsystems update [PROJECT_DIR]` | Update core platform images (agent-control-plane, agentsystems-ui) to latest versions. Faster than re-running `up` when you only need to update platform components. |
 
+### Hub Commands
+
+| Command | Description |
+|---------|-------------|
+| `agentsystems hub login` | Login to AgentSystems Hub - opens browser for authentication and stores API key locally. |
+| `agentsystems hub logout` | Logout from AgentSystems Hub - removes stored API key from local machine. |
+| `agentsystems hub list` | List all your published agents on the hub. |
+| `agentsystems hub publish [PATH]` | Publish agent to the hub. Use `--listed` for public agents. Agents are unlisted (private) by default. |
+| `agentsystems hub delete DEVELOPER/AGENT` | Permanently remove an agent from the hub. |
+| `agentsystems hub allow-listed --enable\|--disable` | Enable or disable listed (public) agents. When disabling, use `--preserve` to keep existing agents or `--cascade` to unlist all. |
+
 ### `up` options
 
 ```
