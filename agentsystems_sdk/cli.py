@@ -26,7 +26,7 @@ from agentsystems_sdk.commands import (
     update_command,
     version_command,
     versions_command,
-    hub_commands,
+    index_commands,
 )
 
 # Load .env before Typer parses env-var options
@@ -93,8 +93,8 @@ app.command(name="update")(update_command)
 app.command(name="version")(version_command)
 app.command(name="versions")(versions_command)
 
-# Register hub sub-commands
-app.add_typer(hub_commands)
+# Register index sub-commands
+app.add_typer(index_commands)
 
 
 if __name__ == "__main__":
