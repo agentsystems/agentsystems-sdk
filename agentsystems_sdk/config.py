@@ -16,6 +16,21 @@ import yaml
 CONFIG_FILENAME = "agentsystems-config.yml"
 
 
+class IndexConnection:  # pragma: no cover – tiny helper class
+    """A single index connection entry from the YAML file."""
+
+    def __init__(self, name: str, data: Dict[str, Any]) -> None:
+        self.name: str = name
+        self.url: str = data["url"]
+        self.enabled: bool = data.get("enabled", False)
+        self.description: str = data.get("description", "")
+
+    def __repr__(self) -> str:  # pragma: no cover
+        return (
+            f"IndexConnection(name={self.name}, url={self.url}, enabled={self.enabled})"
+        )
+
+
 class Registry:  # pragma: no cover – tiny helper class
     """A single registry entry from the YAML file."""
 
@@ -136,6 +151,13 @@ class Config:
         self.registries: Dict[str, Registry] = {
             name: Registry(name, data) for name, data in reg_dict.items()
         }
+
+        # Parse index connections (optional)
+        index_dict = raw.get("index_connections", {})
+        self.indexes: Dict[str, IndexConnection] = {
+            name: IndexConnection(name, data) for name, data in index_dict.items()
+        }
+
         self.agents: List[Agent] = [
             Agent(a, self.registries) for a in raw.get("agents", [])
         ]
@@ -154,6 +176,16 @@ class Config:
         return enabled
 
     # ------------------------------------------------------------------
+    def enabled_indexes(self) -> List[IndexConnection]:
+        """Return index connections flagged as enabled.
+
+        Filters the indexes dictionary to return only those
+        with enabled=True.
+        """
+        enabled = [idx for idx in self.indexes.values() if idx.enabled]
+        return enabled
+
+    # ------------------------------------------------------------------
     def images(self) -> List[str]:
         """List of full image references for all agents.
 
@@ -165,4 +197,4 @@ class Config:
 
     # ------------------------------------------------------------------
     def __repr__(self) -> str:  # pragma: no cover
-        return f"Config(version={self.version}, registries={list(self.registries)}, agents={len(self.agents)})"
+        return f"Config(version={self.version}, registries={list(self.registries)}, indexes={list(self.indexes)}, agents={len(self.agents)})"

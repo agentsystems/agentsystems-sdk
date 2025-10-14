@@ -1,5 +1,12 @@
 config_version: 1
 
+# Agent discovery indexes (for browsing and installing community agents)
+index_connections:
+  agentsystems:
+    url: https://index-api.agentsystems.ai
+    enabled: false
+    description: "Community-contributed agent marketplace"
+
 # Registry connections for pulling agent images
 registry_connections:
   dockerhub_public:
