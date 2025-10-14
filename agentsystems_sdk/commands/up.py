@@ -91,6 +91,20 @@ def setup_agents_from_config(
     import tempfile
     from collections import defaultdict
 
+    # Validate unique agent names before starting any operations
+    agent_names = [agent.name for agent in cfg.agents]
+    duplicate_names = [name for name in agent_names if agent_names.count(name) > 1]
+    if duplicate_names:
+        unique_duplicates = list(set(duplicate_names))
+        console.print(
+            f"[red]✗ Duplicate agent names detected: {', '.join(unique_duplicates)}[/red]"
+        )
+        console.print("[red]  Each agent must have a unique name.[/red]")
+        console.print(
+            "[red]  Fix: Update agent names in agentsystems-config.yml or via the UI at http://localhost:3001/configuration/agents[/red]"
+        )
+        raise typer.Exit(code=1)
+
     client = docker.from_env()
     ensure_agents_net()
 
