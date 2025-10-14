@@ -435,6 +435,19 @@ def publish_command() -> None:
         "source_repository_access": agent_config.get(
             "source_repository_access", "private"
         ),
+        # New discovery & classification fields
+        "context": agent_config.get("context"),
+        "primary_function": agent_config.get("primary_function"),
+        "readiness_level": agent_config.get("readiness_level"),
+        # New compatibility requirements
+        "model_requirements": agent_config.get("model_requirements", []),
+        "required_integrations": agent_config.get("required_integrations", []),
+        "required_egress": agent_config.get("required_egress", []),
+        "input_types": agent_config.get("input_types", []),
+        "output_types": agent_config.get("output_types", []),
+        "input_schema": agent_config.get("input_schema", {}),
+        # Flexible metadata
+        "facets": agent_config.get("facets", {}),
     }
 
     # Show what will be published
@@ -442,11 +455,26 @@ def publish_command() -> None:
     console.print(f"  Developer: {authenticated_developer}")
     console.print(f"  Name: {name}")
     console.print(f"  Description: {payload.get('description') or '(empty)'}")
+    console.print(f"  Context: {payload.get('context') or '(not set)'}")
+    console.print(
+        f"  Primary Function: {payload.get('primary_function') or '(not set)'}"
+    )
+    console.print(f"  Readiness: {payload.get('readiness_level') or '(not set)'}")
     console.print(f"  Image URL: {payload.get('image_repository_url') or '(empty)'}")
     console.print(f"  Source URL: {payload.get('source_repository_url') or '(empty)'}")
     console.print(f"  Listing: {payload.get('listing_status')}")
     console.print(f"  Image Access: {payload.get('image_repository_access')}")
     console.print(f"  Source Access: {payload.get('source_repository_access')}")
+    if payload.get("model_requirements"):
+        console.print(
+            f"  Model Requirements: {len(payload['model_requirements'])} provider(s)"
+        )
+    if payload.get("required_integrations"):
+        console.print(
+            f"  Required Integrations: {len(payload['required_integrations'])} integration(s)"
+        )
+    if payload.get("input_schema"):
+        console.print(f"  Input Schema: {len(payload['input_schema'])} field(s)")
     console.print()
 
     # Ask for confirmation
