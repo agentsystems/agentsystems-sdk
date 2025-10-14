@@ -450,6 +450,22 @@ def publish_command() -> None:
         "facets": agent_config.get("facets", {}),
     }
 
+    # Validate listing requirements
+    if payload.get("listing_status") == "listed":
+        if payload.get("image_repository_access") != "public":
+            console.print("\n[red]✗[/red] Validation Error:")
+            console.print("  Listed agents must have public image repository access.")
+            console.print(
+                "  Set image_repository_access: 'public' in agent.yaml to list this agent."
+            )
+            console.print(
+                "\n  Note: The AgentSystems public index requires all listed agents to be"
+            )
+            console.print(
+                "  immediately installable. Private images can only be published as unlisted."
+            )
+            raise typer.Exit(1)
+
     # Show what will be published
     console.print("\n[cyan]Publishing agent with the following settings:[/cyan]")
     console.print(f"  Developer: {authenticated_developer}")
