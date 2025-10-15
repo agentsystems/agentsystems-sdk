@@ -28,6 +28,7 @@ from ..utils import (
     wait_for_gateway_ready,
     cleanup_langfuse_init_vars,
 )
+from .down import down_command
 
 console = Console()
 
@@ -451,28 +452,18 @@ def up_command(
 
     ensure_docker_installed()
 
-    # Clean networks for fresh state (prevents stale network ID issues)
-    console.print("[cyan]🧹 Cleaning unused networks for fresh networking...[/cyan]")
-    try:
-        subprocess.run(
-            ["docker", "network", "prune", "-f"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        # Non-critical if this fails
-        pass
-
-    # Ensure required external networks exist
-    try:
-        subprocess.run(
-            ["docker", "network", "create", "agents-net"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except Exception:
-        # Network might already exist, that's fine
-        pass
+    # Always do a clean down → up to avoid stale containers/networks
+    console.print(
+        "[cyan]🧹 Stopping existing containers and cleaning networks...[/cyan]"
+    )
+    down_command(
+        project_dir=project_dir,
+        delete_volumes=fresh,  # Only delete volumes if --fresh flag passed
+        delete_containers=False,
+        delete_all=False,
+        volumes=None,
+        no_langfuse=no_langfuse,
+    )
 
     # Use isolated Docker config for the entire session
     isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
@@ -596,11 +587,7 @@ def up_command(
         TextColumn("[bold]{task.description}"),
         console=console,
     ) as prog:
-        if fresh:
-            down_task = prog.add_task("Removing previous containers", total=None)
-            run_command_with_env(compose_files + ["down", "-v"], env_base)
-            prog.update(down_task, completed=1)
-
+        # Note: down already called above, no need to call it again
         up_cmd = compose_files + ["up"]
         if env_file:
             up_cmd.extend(["--env-file", str(env_file)])
