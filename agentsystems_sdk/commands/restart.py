@@ -8,7 +8,6 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from .down import down_command
 from .up import up_command, AgentStartMode
 
 console = Console()
@@ -56,30 +55,16 @@ def restart_command(
 ):
     """Full platform restart with fresh agent containers and updated configuration.
 
-    This is equivalent to `agentsystems down && agentsystems up` and will:
-    - Stop all services and remove agent containers
-    - Clean up unused networks
-    - Start services with fresh agent containers using current .env and config
-
-    Perfect for picking up configuration changes (API keys, model connections, etc.).
+    This is now an alias for `agentsystems up` since up always performs a clean
+    down → up sequence. Kept for backwards compatibility.
     """
     console.print("[cyan]🔄 Full platform restart (down → up)[/cyan]")
 
-    # Call down command with default settings
-    down_command(
-        project_dir=project_dir,
-        delete_volumes=False,
-        delete_containers=False,  # Cleanup is now automatic
-        delete_all=False,
-        volumes=None,
-        no_langfuse=no_langfuse,
-    )
-
-    # Call up command with all the same options
+    # up now handles the full down → up sequence
     up_command(
         project_dir=project_dir,
         detach=detach,
-        fresh=False,  # Down already cleaned up
+        fresh=False,
         wait_ready=wait_ready,
         no_langfuse=no_langfuse,
         agents_mode=agents_mode,
