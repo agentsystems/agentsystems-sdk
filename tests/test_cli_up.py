@@ -14,6 +14,7 @@ from agentsystems_sdk.commands.up import (
 class TestUpCommand:
     """Tests for the up command - focusing on logic, not Docker operations."""
 
+    @patch("agentsystems_sdk.commands.up.down_command")
     @patch("agentsystems_sdk.commands.up.subprocess.run")
     @patch("agentsystems_sdk.commands.up.setup_agents_from_config")
     @patch("agentsystems_sdk.commands.up.wait_for_gateway_ready")
@@ -34,6 +35,7 @@ class TestUpCommand:
         mock_wait_gateway,
         mock_setup_agents,
         mock_subprocess,
+        mock_down_command,
         tmp_path,
     ):
         """Test up command in detached mode with wait."""
@@ -99,6 +101,7 @@ agents:
         mock_setup_agents.assert_called_once()
         mock_cleanup_vars.assert_called_once_with(env_file)
 
+    @patch("agentsystems_sdk.commands.up.down_command")
     @patch("agentsystems_sdk.commands.up.subprocess.run")
     @patch("agentsystems_sdk.commands.up.setup_agents_from_config")
     @patch("agentsystems_sdk.commands.up.run_command_with_env")
@@ -115,6 +118,7 @@ agents:
         mock_run_command,
         mock_setup_agents,
         mock_subprocess,
+        mock_down_command,
         tmp_path,
     ):
         """Test up command in foreground mode (no detach)."""
@@ -204,6 +208,7 @@ agents:
                 agentsystems_ui_version=None,
             )
 
+    @patch("agentsystems_sdk.commands.up.down_command")
     @patch("agentsystems_sdk.commands.up.subprocess.run")
     @patch("agentsystems_sdk.commands.up.setup_agents_from_config")
     @patch("agentsystems_sdk.commands.up.wait_for_gateway_ready")
@@ -222,6 +227,7 @@ agents:
         mock_wait_gateway,
         mock_setup_agents,
         mock_subprocess,
+        mock_down_command,
         tmp_path,
     ):
         """Test up command with agents=none option."""
@@ -280,6 +286,7 @@ agents:
             mock_cfg_instance, tmp_path, AgentStartMode.none
         )
 
+    @patch("agentsystems_sdk.commands.up.down_command")
     @patch("agentsystems_sdk.commands.up.subprocess.run")
     @patch("agentsystems_sdk.commands.up.setup_agents_from_config")
     @patch("agentsystems_sdk.commands.up.wait_for_gateway_ready")
@@ -298,6 +305,7 @@ agents:
         mock_wait_gateway,
         mock_setup_agents,
         mock_subprocess,
+        mock_down_command,
         tmp_path,
     ):
         """Test up command with --no-langfuse flag."""
@@ -406,6 +414,7 @@ agents:
                 agentsystems_ui_version=None,
             )
 
+    @patch("agentsystems_sdk.commands.up.down_command")
     @patch("agentsystems_sdk.commands.up.subprocess.run")
     @patch("agentsystems_sdk.commands.up.setup_agents_from_config")
     @patch("agentsystems_sdk.commands.up.wait_for_gateway_ready")
@@ -424,6 +433,7 @@ agents:
         mock_wait_gateway,
         mock_setup_agents,
         mock_subprocess,
+        mock_down_command,
         tmp_path,
     ):
         """Test up command with custom --env-file."""
