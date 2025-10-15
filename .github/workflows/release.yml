@@ -344,21 +344,31 @@ jobs:
           python -m venv test-env
           source test-env/bin/activate
 
-          # Retry installation due to potential propagation delays
+          # Retry installation with increasing delays to handle PyPI caching
           echo "Installing agentsystems-sdk==${{ needs.validate-version.outputs.version }} from TestPyPI..."
-          for i in {1..5}; do
-            if pip install --index-url https://test.pypi.org/simple/ \
+          DELAYS=(5 10 20 40)  # Increasing delays in seconds
+
+          for i in {1..4}; do
+            # Clear pip cache before each attempt to avoid stale package index
+            pip cache purge 2>/dev/null || true
+
+            echo "Attempt $i of 4..."
+            if pip install --no-cache-dir \
+                 --index-url https://test.pypi.org/simple/ \
                  --extra-index-url https://pypi.org/simple/ \
                  agentsystems-sdk==${{ needs.validate-version.outputs.version }}; then
               echo "✅ Installation successful on attempt $i"
               break
             fi
-            if [ $i -eq 5 ]; then
-              echo "❌ Failed to install after 5 attempts"
+
+            if [ $i -eq 4 ]; then
+              echo "❌ Failed to install after 4 attempts"
               exit 1
             fi
-            echo "Attempt $i failed, waiting 30s for TestPyPI propagation..."
-            sleep 30
+
+            DELAY=${DELAYS[$((i-1))]}
+            echo "Attempt $i failed, waiting ${DELAY}s for TestPyPI propagation..."
+            sleep $DELAY
           done
 
           # Test basic CLI functionality
@@ -425,33 +435,32 @@ jobs:
           python -m venv prod-test-env
           source prod-test-env/bin/activate
 
-          # Exponential backoff for PyPI CDN propagation
+          # Retry with increasing delays to handle PyPI caching and CDN propagation
           echo "Installing agentsystems-sdk==${{ needs.validate-version.outputs.version }} from PyPI..."
-          WAIT_TIME=10
-          MAX_WAIT=600  # 10 minutes max
+          DELAYS=(5 10 20 40 60 120)  # Increasing delays: 5s, 10s, 20s, 40s, 60s, 120s
+          MAX_ATTEMPTS=6
           TOTAL_TIME=0
 
-          while true; do
-            if pip install agentsystems-sdk==${{ needs.validate-version.outputs.version }}; then
-              echo "✅ Installation successful after ${TOTAL_TIME}s"
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            # Clear pip cache before each attempt to avoid stale package index
+            pip cache purge 2>/dev/null || true
+
+            echo "Attempt $i of $MAX_ATTEMPTS..."
+            if pip install --no-cache-dir agentsystems-sdk==${{ needs.validate-version.outputs.version }}; then
+              echo "✅ Installation successful after ${TOTAL_TIME}s (attempt $i)"
               break
             fi
 
-            if [ $TOTAL_TIME -ge $MAX_WAIT ]; then
-              echo "❌ Failed to install after ${TOTAL_TIME}s (reached 10 minute timeout)"
+            if [ $i -eq $MAX_ATTEMPTS ]; then
+              echo "❌ Failed to install after $MAX_ATTEMPTS attempts (total wait: ${TOTAL_TIME}s)"
               echo "Package may still be propagating through PyPI CDN"
               exit 1
             fi
 
-            echo "Not found yet, waiting ${WAIT_TIME}s before retry (total wait: ${TOTAL_TIME}s)..."
-            sleep $WAIT_TIME
-            TOTAL_TIME=$((TOTAL_TIME + WAIT_TIME))
-
-            # Double wait time, but cap at 2 minutes per attempt
-            WAIT_TIME=$((WAIT_TIME * 2))
-            if [ $WAIT_TIME -gt 120 ]; then
-              WAIT_TIME=120
-            fi
+            DELAY=${DELAYS[$((i-1))]}
+            echo "Attempt $i failed, waiting ${DELAY}s for PyPI propagation (total wait: ${TOTAL_TIME}s)..."
+            sleep $DELAY
+            TOTAL_TIME=$((TOTAL_TIME + DELAY))
           done
 
           # Basic smoke test
