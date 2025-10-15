@@ -1,5 +1,7 @@
 config_version: 1
 
+# Security Note: Review all agent code before installation.
+
 # Agent discovery indexes (for browsing and installing community agents)
 index_connections:
   agentsystems:
