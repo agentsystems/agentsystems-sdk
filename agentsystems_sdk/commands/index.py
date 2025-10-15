@@ -522,26 +522,82 @@ def publish_command() -> None:
                 current_response.raise_for_status()
                 current_agent = current_response.json()
 
-                # Compare settings that will be overwritten
-                changes = []
-                fields_to_check = [
-                    ("description", "Description"),
-                    ("image_repository_url", "Image URL"),
-                    ("source_repository_url", "Source URL"),
-                    ("listing_status", "Listing Status"),
-                    ("image_repository_access", "Image Access"),
-                    ("source_repository_access", "Source Access"),
-                ]
+                # Compare all payload fields against current agent
+                # Skip metadata fields that shouldn't trigger change detection
+                fields_to_ignore = {
+                    "name",  # Name is immutable
+                    "id",
+                    "developer_id",
+                    "created_at",
+                    "updated_at",
+                }
 
-                for field, label in fields_to_check:
+                # Human-friendly labels for fields
+                field_labels = {
+                    "description": "Description",
+                    "image_repository_url": "Image URL",
+                    "source_repository_url": "Source URL",
+                    "listing_status": "Listing Status",
+                    "image_repository_access": "Image Access",
+                    "source_repository_access": "Source Access",
+                    "context": "Context",
+                    "primary_function": "Primary Function",
+                    "readiness_level": "Readiness Level",
+                    "model_requirements": "Model Requirements",
+                    "required_integrations": "Required Integrations",
+                    "required_egress": "Required Egress",
+                    "input_types": "Input Types",
+                    "output_types": "Output Types",
+                    "input_schema": "Input Schema",
+                    "facets": "Facets",
+                }
+
+                changes = []
+                for field, new_value in payload.items():
+                    if field in fields_to_ignore:
+                        continue
+
                     current_value = current_agent.get(field)
-                    new_value = payload.get(field)
+
+                    # Deep comparison for lists and dicts
                     if current_value != new_value:
+                        # Format lists and dicts nicely for display
+                        if isinstance(current_value, list):
+                            current_display = (
+                                ", ".join(str(v) for v in current_value)
+                                if current_value
+                                else "(empty)"
+                            )
+                        elif isinstance(current_value, dict):
+                            current_display = (
+                                f"{len(current_value)} item(s)"
+                                if current_value
+                                else "(empty)"
+                            )
+                        else:
+                            current_display = current_value or "(empty)"
+
+                        if isinstance(new_value, list):
+                            new_display = (
+                                ", ".join(str(v) for v in new_value)
+                                if new_value
+                                else "(empty)"
+                            )
+                        elif isinstance(new_value, dict):
+                            new_display = (
+                                f"{len(new_value)} item(s)" if new_value else "(empty)"
+                            )
+                        else:
+                            new_display = new_value or "(empty)"
+
+                        # Use friendly label if available, otherwise use field name with title case
+                        label = field_labels.get(field, field.replace("_", " ").title())
+
                         changes.append(
                             {
                                 "label": label,
-                                "current": current_value or "(empty)",
-                                "new": new_value or "(empty)",
+                                "current": current_display,
+                                "new": new_display,
                             }
                         )
 
