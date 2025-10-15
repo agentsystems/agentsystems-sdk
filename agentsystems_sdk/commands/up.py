@@ -465,6 +465,17 @@ def up_command(
         no_langfuse=no_langfuse,
     )
 
+    # Recreate agents-net (required external network for compose)
+    console.print("[cyan]🔌 Creating platform networks...[/cyan]")
+    try:
+        subprocess.run(
+            ["docker", "network", "create", "agents-net"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass  # Network might already exist
+
     # Use isolated Docker config for the entire session
     isolated_cfg = tempfile.TemporaryDirectory(prefix="agentsystems-docker-config-")
     env_base = os.environ.copy()
