@@ -451,27 +451,53 @@ def up_command(
 
     ensure_docker_installed()
 
-    # Clean networks for fresh state (prevents stale network ID issues)
-    console.print("[cyan]🧹 Cleaning unused networks for fresh networking...[/cyan]")
+    # ============================================================
+    # SMART NETWORK CLEANUP: Prevents stale network issues
+    # Always clean stale networks before starting to avoid
+    # "network still in use" errors from previous runs
+    # ============================================================
+    console.print("[cyan]🧹 Cleaning stale networks...[/cyan]")
     try:
+        # 1. Prune all unused networks
         subprocess.run(
             ["docker", "network", "prune", "-f"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
+
+        # 2. Explicitly remove agents-int if it exists (prevents stale state)
+        # This is safe even if containers are attached - Docker will refuse
+        subprocess.run(
+            ["docker", "network", "rm", "agents-int"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        # 3. Remove agents-net as well for consistency
+        subprocess.run(
+            ["docker", "network", "rm", "agents-net"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except Exception:
-        # Non-critical if this fails
+        # Non-critical if cleanup fails - networks might not exist yet
         pass
 
-    # Ensure required external networks exist
+    # Create required networks fresh
+    console.print("[cyan]🔌 Creating platform networks...[/cyan]")
     try:
+        subprocess.run(
+            ["docker", "network", "create", "agents-int"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
         subprocess.run(
             ["docker", "network", "create", "agents-net"],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
     except Exception:
-        # Network might already exist, that's fine
+        # Networks might already exist after prune, that's fine
         pass
 
     # Use isolated Docker config for the entire session
