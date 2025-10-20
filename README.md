@@ -4,7 +4,7 @@
 [![CI](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/agentsystems/agentsystems-sdk/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/agentsystems/agentsystems-sdk/branch/main/graph/badge.svg?token=25Mahs4a96)](https://codecov.io/gh/agentsystems/agentsystems-sdk)
 
 > [!NOTE]
-> **Public Beta** - Part of the AgentSystems platform. Official public launch September 15, 2025.
+> **Pre-Release Software** - AgentSystems is in active development. Join our [Discord](https://discord.com/invite/JsxDxQ5zfV) for updates and early access.
 > ⭐ [**Star the main repository**](https://github.com/agentsystems/agentsystems) to show your support!
 
 > This is the **CLI and deployment tool** for AgentSystems. See the [main repository](https://github.com/agentsystems/agentsystems) for platform overview and documentation.
@@ -197,12 +197,12 @@ docker exec local-gateway-1 ls -la /artifacts/{thread-id}/in/
 
 ### Volume Mounting for Agents
 
-When deploying agents through `agentsystems-config.yml`, the CLI automatically:
+When deploying agents through `agentsystems-config.yml`, the CLI is configured to:
 
-1. **Mounts artifacts volume**: All agents get `/artifacts` mounted with proper permissions
-2. **Creates thread directories**: Gateway creates `/artifacts/{thread-id}/{in,out}/` as needed
-3. **Handles file uploads**: Gateway saves uploaded files to `/artifacts/{thread-id}/in/`
-4. **Manages permissions**: Attempts to configure agents (UID 1001) for artifact access
+1. **Mount artifacts volume**: All agents get `/artifacts` mounted with proper permissions
+2. **Create thread directories**: Gateway creates `/artifacts/{thread-id}/{in,out}/` as needed
+3. **Handle file uploads**: Gateway saves uploaded files to `/artifacts/{thread-id}/in/`
+4. **Manage permissions**: Attempts to configure agents (UID 1001) for artifact access
 
 ### Agent Development
 
@@ -257,7 +257,7 @@ agentsystems init /opt/agentsystems/engine
 ```
 
 ---
-## Multi-registry agent marketplace
+## Multi-registry agent ecosystem
 
 Agent images and credentials are now configured via a single **`agentsystems-config.yml`** file found in the deployment repo. Use the new top-level `registry_connections:` key (replacing the legacy `registries:`) to define one or more logins—multiple Docker Hub accounts, Harbor, ECR, etc.
 
