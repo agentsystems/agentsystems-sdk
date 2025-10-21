@@ -173,8 +173,8 @@ def validate_command() -> None:
                     "primary_function",
                     "readiness_level",
                     "listing_status",
-                    "image_repository_url",
-                    "image_repository_access",
+                    "container_image",
+                    "container_image_access",
                     "source_repository_url",
                     "source_repository_access",
                 ]
