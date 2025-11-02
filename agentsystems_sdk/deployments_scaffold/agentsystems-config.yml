@@ -28,6 +28,11 @@ agents:
   overrides:
     expose:
     - '8000'
+  declared_metadata:
+    description: "Writes a short narrative of the events that occurred on the specified date."
+    readiness_level: production
+    model_dependencies:
+    - gemma3:1b
 
 # Model connections for AI inference
 model_connections:
