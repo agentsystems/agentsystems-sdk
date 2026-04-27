@@ -1,5 +1,5 @@
 pre-commit
 pytest
 pytest-cov
-requests-mock>=1.12
+requests-mock>=1.12.1
 pip-licenses>=4.0.0
